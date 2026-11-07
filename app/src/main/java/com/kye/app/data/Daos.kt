@@ -141,6 +141,13 @@ interface TxnDao {
             "AND dateTime BETWEEN :from AND :to AND (:categoryId IS NULL OR categoryId = :categoryId)"
     )
     suspend fun sumExpense(from: Long, to: Long, categoryId: Long?): Long
+
+    @Insert
+    suspend fun insertAll(txns: List<Txn>)
+
+    /** Undo for one CSV import: every entry it added carries the import's time in createdAt. */
+    @Query("DELETE FROM txn WHERE source = 'IMPORT' AND createdAt = :batch")
+    suspend fun deleteImport(batch: Long): Int
 }
 
 @Dao

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -68,7 +69,7 @@ import com.kye.app.ui.components.ProgressBar
 import java.time.LocalDate
 
 @Composable
-fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, onCategories: () -> Unit) {
+fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, onCategories: () -> Unit, onImport: () -> Unit) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val toast: (String) -> Unit = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
@@ -144,7 +145,8 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
             ActionRow(Icons.Rounded.Restore, "Restore from backup", "Replaces everything on this phone with the backup") {
                 restorePicker.launch(arrayOf("application/json", "application/octet-stream", "text/plain"))
             }
-            ActionRow(Icons.Rounded.FileDownload, "Export to CSV", "Opens in Excel or Google Sheets") {
+            ActionRow(Icons.Rounded.UploadFile, "Import from CSV", "Add expenses and income from a spreadsheet. Get the blank template there.", onImport)
+            ActionRow(Icons.Rounded.FileDownload, "Export to CSV", "Same columns as the import template. Opens in Excel or Google Sheets") {
                 exporter.launch("KYE-expenses-${LocalDate.now()}.csv")
             }
             Spacer(Modifier.height(8.dp))

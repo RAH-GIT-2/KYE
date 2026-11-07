@@ -1,6 +1,7 @@
 package com.kye.app.data
 
 import androidx.room.withTransaction
+import com.kye.app.domain.CsvImport
 import com.kye.app.domain.Dates
 import com.kye.app.domain.Recurrence
 import kotlinx.coroutines.flow.Flow
@@ -448,31 +449,65 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
 
     // ---------- Export ----------
 
+    /** Same columns as the import template, so an export can be edited and imported again. */
     suspend fun exportCsv(out: OutputStream) {
         val rows = txnDao.allRows()
         out.bufferedWriter(Charsets.UTF_8).use { w ->
-            w.write("Date,Time,Type,Category,Subcategory,Amount (INR),Payment,Note,Source\n")
+            w.write(CsvImport.TEMPLATE)
             rows.forEach { r ->
                 val t = r.txn
                 val cells = listOf(
-                    Dates.toLocalDate(t.dateTime).toString(),
-                    Dates.toLocalTime(t.dateTime).withNano(0).toString(),
-                    t.type.name,
-                    r.catName ?: "Uncategorised",
-                    r.subName ?: "",
+                    CsvImport.formatDate(Dates.toLocalDate(t.dateTime)),
+                    CsvImport.typeLabel(t.type),
                     BigDecimal(t.amountPaise).movePointLeft(2).toPlainString(),
+                    r.catName ?: "",
+                    r.specificSub ?: "",
                     t.paymentMode.label,
-                    t.note,
-                    t.source.name
+                    t.note
                 )
-                w.write(cells.joinToString(",") { csv(it) })
-                w.write("\n")
+                w.write(cells.joinToString(",") { CsvImport.csvCell(it) })
+                w.write("\r\n")
             }
         }
     }
 
-    private fun csv(value: String): String =
-        if (value.any { it == ',' || it == '"' || it == '\n' }) "\"" + value.replace("\"", "\"\"") + "\"" else value
+    // ---------- CSV import ----------
+
+    /**
+     * Saves imported entries in one go. Categories in [newCategories] are created first; an entry
+     * points at one through [ImportEntry.newCategoryKey]. Subcategory names not seen before are
+     * created under their category. Returns the batch id that [undoImport] takes, and the count.
+     */
+    suspend fun importEntries(newCategories: List<NewCategory>, entries: List<ImportEntry>): Pair<Long, Int> {
+        if (entries.isEmpty()) return 0L to 0
+        val batch = System.currentTimeMillis()
+        db.withTransaction {
+            val createdCats = HashMap<String, Long>()
+            newCategories.forEachIndexed { i, nc ->
+                createdCats[nc.key] = addCategory(nc.name, "🏷️", IMPORT_COLORS[i % IMPORT_COLORS.size], nc.kind)
+            }
+            val subCache = HashMap<Pair<Long, String>, Long>()
+            val txns = entries.map { e ->
+                val catId = e.newCategoryKey?.let { createdCats[it] } ?: e.txn.categoryId
+                val subId = when {
+                    catId == null -> null
+                    e.newSubName != null -> {
+                        val key = catId to e.newSubName.lowercase()
+                        subCache[key] ?: (categoryDao.subsOf(catId).firstOrNull { it.name.equals(e.newSubName, ignoreCase = true) }?.id
+                            ?: addSubcategory(catId, e.newSubName)).also { subCache[key] = it }
+                    }
+                    e.txn.subcategoryId != null -> e.txn.subcategoryId
+                    else -> defaultSubOf(catId)
+                }
+                e.txn.copy(categoryId = catId, subcategoryId = subId, source = Source.IMPORT, createdAt = batch, updatedAt = batch)
+            }
+            txnDao.insertAll(txns)
+        }
+        keywordCache = null
+        return batch to entries.size
+    }
+
+    suspend fun undoImport(batch: Long): Int = txnDao.deleteImport(batch)
 
     // ---------- Backup & restore ----------
 
@@ -521,3 +556,11 @@ const val OTHERS = "Others"
 
 /** Keywords the user adds or names they type outrank the built-in ones (1–3), but not learned corrections (5). */
 private const val USER_WEIGHT = 4
+
+/** An entry from a CSV file, ready to save. Category/subcategory that still need creating are named here. */
+data class ImportEntry(val txn: Txn, val newCategoryKey: String? = null, val newSubName: String? = null)
+
+/** A category the user chose to create during an import. */
+data class NewCategory(val key: String, val name: String, val kind: CategoryKind)
+
+private val IMPORT_COLORS = listOf(0xFF6C5CE7, 0xFF00B894, 0xFFE17055, 0xFF0984E3, 0xFFFDCB6E, 0xFFE84393)

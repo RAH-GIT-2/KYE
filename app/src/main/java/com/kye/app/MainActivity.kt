@@ -68,6 +68,7 @@ import com.kye.app.ui.screens.CategoriesScreen
 import com.kye.app.ui.screens.CategoryDetailScreen
 import com.kye.app.ui.screens.HistoryScreen
 import com.kye.app.ui.screens.HomeScreen
+import com.kye.app.ui.screens.ImportScreen
 import com.kye.app.ui.screens.InsightsScreen
 import com.kye.app.ui.screens.RecurringScreen
 import com.kye.app.ui.screens.RuleEditScreen
@@ -235,10 +236,12 @@ private fun KyeRoot(vm: KyeViewModel) {
                     vm,
                     onBack = { nav.popBackStack() },
                     onBudgets = { nav.navigate("budgets") },
-                    onCategories = { nav.navigate("categories") }
+                    onCategories = { nav.navigate("categories") },
+                    onImport = { nav.navigate("import") }
                 )
             }
             composable("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }
+            composable("import") { ImportScreen(vm) { nav.popBackStack() } }
         }
     }
 

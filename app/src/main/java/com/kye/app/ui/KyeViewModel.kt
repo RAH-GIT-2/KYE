@@ -12,6 +12,9 @@ import com.kye.app.data.Category
 import com.kye.app.data.CategoryKind
 import com.kye.app.data.KeywordRule
 import com.kye.app.data.UserError
+import com.kye.app.data.ImportEntry
+import com.kye.app.data.NewCategory
+import com.kye.app.data.OTHERS
 import com.kye.app.data.PaymentMode
 import com.kye.app.data.RecurringMode
 import com.kye.app.data.RecurringRule
@@ -23,6 +26,9 @@ import com.kye.app.data.Txn
 import com.kye.app.data.TxnRow
 import com.kye.app.data.TxnType
 import com.kye.app.domain.AnalyticsState
+import com.kye.app.domain.CsvImport
+import com.kye.app.domain.ImportProblem
+import com.kye.app.domain.ImportRow
 import com.kye.app.domain.Dates
 import com.kye.app.domain.HomeState
 import com.kye.app.domain.Period
@@ -441,4 +447,177 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         change(onError, onDone) { repo.addKeyword(phrase, categoryId, subcategoryId) }
 
     fun deleteKeyword(id: Long, onError: (String) -> Unit) = change(onError) { repo.deleteKeyword(id) }
+
+    // ---------- CSV import ----------
+
+    fun writeTemplate(uri: Uri, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use {
+                        it.write(CsvImport.TEMPLATE.toByteArray(Charsets.UTF_8))
+                    } ?: error("no stream")
+                }.isSuccess
+            }
+            onDone(if (ok) "Template saved. Fill it in, then upload it here." else "Couldn't save the template")
+        }
+    }
+
+    private fun kindFor(type: TxnType?): CategoryKind = when (type) {
+        TxnType.INCOME -> CategoryKind.INCOME
+        TxnType.SAVING -> CategoryKind.SAVING
+        else -> CategoryKind.EXPENSE
+    }
+
+    private fun dupKey(date: LocalDate, paise: Long, note: String) = "$date|$paise|${note.trim().lowercase()}"
+
+    /** Reads the file and works out what needs the user's attention. Nothing is saved yet. */
+    suspend fun prepareImport(uri: Uri): ImportPreview = withContext(Dispatchers.IO) {
+        val text = getApplication<Application>().contentResolver.openInputStream(uri)?.use {
+            it.readBytes().toString(Charsets.UTF_8)
+        } ?: throw UserError("Couldn't open the file")
+        val file = CsvImport.read(text)
+
+        val cats = allCategories.value.associateBy { it.name.lowercase() }
+        val subs = allSubcategories.value
+        val existing = txns.value.map { dupKey(Dates.toLocalDate(it.txn.dateTime), it.txn.amountPaise, it.txn.note) }.toSet()
+
+        val unknown = file.rows.filter { it.category.isNotBlank() && it.category.lowercase() !in cats }
+            .groupBy { it.category.lowercase() }
+            .map { (key, rows) -> UnknownCategory(key, rows.first().category, kindFor(rows.first().type), rows.size) }
+
+        val newSubs = file.rows.mapNotNull { r ->
+            val sub = r.subcategory
+            if (sub.isBlank() || sub.equals(OTHERS, ignoreCase = true) || r.category.isBlank()) return@mapNotNull null
+            val cat = cats[r.category.lowercase()]
+            val exists = cat != null && subs.any { it.categoryId == cat.id && it.name.equals(sub, ignoreCase = true) }
+            if (exists) null else "$sub (${cat?.name ?: r.category})"
+        }.distinctBy { it.lowercase() }
+
+        ImportPreview(
+            rows = file.rows,
+            problems = file.problems,
+            duplicateLines = file.rows.filter { dupKey(it.date, it.amountPaise, it.note) in existing }.map { it.line }.toSet(),
+            unknownCategories = unknown,
+            newSubcategories = newSubs
+        )
+    }
+
+    /** Saves the preview's rows (skipping duplicates), following [choices] for unknown categories. */
+    fun runImport(preview: ImportPreview, choices: Map<String, CatChoice>, onDone: (ImportResult?, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val cats = allCategories.value.associateBy { it.name.lowercase() }
+                    val subs = allSubcategories.value
+                    val newCats = preview.unknownCategories
+                        .filter { choices[it.key] == CatChoice.Create }
+                        .map { NewCategory(it.key, it.name, it.kind) }
+                    val newKinds = newCats.associate { it.key to it.kind }
+
+                    val entries = preview.rows.filter { it.line !in preview.duplicateLines }.map { r ->
+                        var catId: Long? = null
+                        var subId: Long? = null
+                        var newCatKey: String? = null
+                        var newSub: String? = null
+                        val subName = r.subcategory.takeIf { it.isNotBlank() && !it.equals(OTHERS, ignoreCase = true) }
+                        fun pickSub(categoryId: Long) {
+                            if (subName == null) return
+                            subId = subs.firstOrNull { it.categoryId == categoryId && it.name.equals(subName, ignoreCase = true) }?.id
+                            if (subId == null) newSub = subName
+                        }
+
+                        val known = cats[r.category.lowercase()]
+                        when {
+                            r.category.isBlank() -> {
+                                // No category: guess from the note, as voice entry would.
+                                if (r.note.isNotBlank()) {
+                                    val d = parseVoice(r.note).firstOrNull()
+                                    val gKind = d?.categoryId?.let { categoryMap.value[it]?.kind }
+                                    if (d?.categoryId != null && (r.type == null || gKind == kindFor(r.type))) {
+                                        catId = d.categoryId
+                                        subId = d.subcategoryId
+                                    }
+                                }
+                            }
+                            known != null -> {
+                                catId = known.id
+                                pickSub(known.id)
+                            }
+                            else -> when (val c = choices[r.category.lowercase()]) {
+                                CatChoice.Create -> {
+                                    newCatKey = r.category.lowercase()
+                                    newSub = subName
+                                }
+                                is CatChoice.Existing -> {
+                                    catId = c.id
+                                    pickSub(c.id)
+                                }
+                                CatChoice.Uncategorised, null -> Unit
+                            }
+                        }
+
+                        val type = r.type
+                            ?: newCatKey?.let { k -> newKinds[k]?.let { typeForKind(it) } }
+                            ?: typeFor(catId, subId)
+                        ImportEntry(
+                            txn = Txn(
+                                amountPaise = r.amountPaise,
+                                type = type,
+                                categoryId = catId,
+                                subcategoryId = subId,
+                                dateTime = Dates.atMillis(r.date, LocalTime.of(12, 0)),
+                                paymentMode = r.payment,
+                                note = r.note,
+                                source = Source.IMPORT
+                            ),
+                            newCategoryKey = newCatKey,
+                            newSubName = newSub
+                        )
+                    }
+                    val (batch, count) = repo.importEntries(newCats, entries)
+                    ImportResult(batch, count, preview.duplicateLines.size, preview.problems.size)
+                }
+                onDone(result, null)
+            } catch (e: UserError) {
+                onDone(null, e.message)
+            } catch (e: Exception) {
+                onDone(null, "Import failed")
+            }
+        }
+    }
+
+    private fun typeForKind(kind: CategoryKind) = when (kind) {
+        CategoryKind.INCOME -> TxnType.INCOME
+        CategoryKind.SAVING -> TxnType.SAVING
+        CategoryKind.EXPENSE -> TxnType.EXPENSE
+    }
+
+    fun undoImport(batch: Long, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val n = withContext(Dispatchers.IO) { repo.undoImport(batch) }
+            onDone("Removed $n imported entr${if (n == 1) "y" else "ies"}")
+        }
+    }
 }
+
+/** How the user wants one unknown category name handled. */
+sealed interface CatChoice {
+    data object Create : CatChoice
+    data class Existing(val id: Long) : CatChoice
+    data object Uncategorised : CatChoice
+}
+
+data class UnknownCategory(val key: String, val name: String, val kind: CategoryKind, val rows: Int)
+
+data class ImportPreview(
+    val rows: List<ImportRow>,
+    val problems: List<ImportProblem>,
+    val duplicateLines: Set<Int>,
+    val unknownCategories: List<UnknownCategory>,
+    val newSubcategories: List<String>
+) {
+    val ready: Int get() = rows.size - duplicateLines.size
+}
+
+data class ImportResult(val batch: Long, val imported: Int, val duplicates: Int, val problems: Int)

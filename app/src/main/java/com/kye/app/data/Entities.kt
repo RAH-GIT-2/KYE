@@ -18,7 +18,8 @@ enum class PaymentMode(val label: String) {
     WALLET("Wallet")
 }
 
-enum class Source { MANUAL, VOICE, RECURRING }
+/** Stored by name. IMPORT entries share their import time in createdAt, which is how Undo finds them. */
+enum class Source { MANUAL, VOICE, RECURRING, IMPORT }
 
 enum class CategoryKind { EXPENSE, SAVING, INCOME }
 

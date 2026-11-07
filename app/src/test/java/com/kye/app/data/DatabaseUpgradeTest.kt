@@ -135,6 +135,29 @@ class DatabaseUpgradeTest {
         assertEquals(before, after)
         assertEquals(150000L, db.txnDao().get(txnId)!!.amountPaise)
 
+        // CSV import: creates a new category and subcategory, adds entries, and Undo removes exactly those.
+        val countBefore = db.txnDao().allRows().size
+        val salary = cats.first { it.name == "Salary" }
+        val (batch, n) = repo.importEntries(
+            newCategories = listOf(NewCategory("pets", "Pets", CategoryKind.EXPENSE)),
+            entries = listOf(
+                ImportEntry(Txn(amountPaise = 50000, type = TxnType.EXPENSE, categoryId = null, subcategoryId = null, dateTime = 2, paymentMode = PaymentMode.UPI, note = "vet"), newCategoryKey = "pets", newSubName = "Vet"),
+                ImportEntry(Txn(amountPaise = 50000, type = TxnType.EXPENSE, categoryId = null, subcategoryId = null, dateTime = 3, paymentMode = PaymentMode.UPI, note = "vet again"), newCategoryKey = "pets", newSubName = "vet"),
+                ImportEntry(Txn(amountPaise = 6500000, type = TxnType.INCOME, categoryId = salary.id, subcategoryId = null, dateTime = 4, paymentMode = PaymentMode.NET_BANKING))
+            )
+        )
+        assertEquals(3, n)
+        val pets = db.categoryDao().allCategories().first { it.name == "Pets" }
+        val petSubs = db.categoryDao().subsOf(pets.id)
+        assertEquals("one Vet subcategory, not two", 1, petSubs.count { it.name.equals("vet", ignoreCase = true) })
+        assertEquals(1, petSubs.count { it.isDefault })
+        val imported = db.txnDao().allRows().filter { it.txn.source == Source.IMPORT }
+        assertEquals(3, imported.size)
+        assertTrue(imported.filter { it.txn.categoryId == pets.id }.all { it.subName == "Vet" })
+        assertEquals("blank subcategory goes to Others", true, imported.first { it.txn.categoryId == salary.id }.subIsDefault)
+        assertEquals(3, repo.undoImport(batch))
+        assertEquals(countBefore, db.txnDao().allRows().size)
+
         // A file that isn't a backup is refused before anything is touched.
         assertTrue(runCatching { repo.importBackup(ByteArrayInputStream("{\"hello\":1}".toByteArray())) }.exceptionOrNull() is UserError)
         assertEquals(1, db.txnDao().allRows().size)
