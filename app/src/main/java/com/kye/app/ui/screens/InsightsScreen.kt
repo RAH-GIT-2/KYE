@@ -75,7 +75,7 @@ fun InsightsScreen(vm: KyeViewModel, onBudgets: () -> Unit) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 180.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item(key = "title") {
@@ -90,7 +90,7 @@ fun InsightsScreen(vm: KyeViewModel, onBudgets: () -> Unit) {
             }
         }
         val s = a ?: return@LazyColumn
-        item(key = "summary") { Summary(s) }
+        item(key = "summary") { Column { Summary(s) } }
 
         if (s.count == 0) {
             item(key = "empty") { EmptyState("📊", "No spending in this period", "Add a few entries and your charts appear here") }
@@ -113,6 +113,21 @@ fun InsightsScreen(vm: KyeViewModel, onBudgets: () -> Unit) {
 
 @Composable
 private fun Summary(s: AnalyticsState) {
+    if (s.income > 0) {
+        // Only once income is being tracked: what's left after spending, and how much of income that is.
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("Income", Money.format(s.income), Modifier.weight(1f), MaterialTheme.colorScheme.secondary)
+            val left = s.income - s.spent
+            StatTile(
+                if (left >= 0) "Left over" else "Overspent",
+                Money.format(kotlin.math.abs(left)),
+                Modifier.weight(1f),
+                if (left >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.tertiary
+            )
+            StatTile("Kept", "${(left * 100 / s.income).coerceAtLeast(0)}%", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         StatTile("Spent", Money.format(s.spent), Modifier.weight(1f))
         StatTile("Saved", Money.format(s.saved), Modifier.weight(1f), MaterialTheme.colorScheme.secondary)

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -32,9 +33,8 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -63,6 +64,8 @@ import androidx.navigation.navArgument
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.screens.AddEditScreen
 import com.kye.app.ui.screens.BudgetsScreen
+import com.kye.app.ui.screens.CategoriesScreen
+import com.kye.app.ui.screens.CategoryDetailScreen
 import com.kye.app.ui.screens.HistoryScreen
 import com.kye.app.ui.screens.HomeScreen
 import com.kye.app.ui.screens.InsightsScreen
@@ -104,6 +107,9 @@ private fun KyeRoot(vm: KyeViewModel) {
     val onTab = tabs.any { it.route == route }
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    // Hidden when turned off in Settings, or when the phone has no speech recognition at all.
+    val speechAvailable = remember { SpeechRecognizer.isRecognitionAvailable(context) }
+    val showMic = speechAvailable && (settings?.voiceEnabled ?: true)
 
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         vm.markAskedNotifications()
@@ -141,25 +147,36 @@ private fun KyeRoot(vm: KyeViewModel) {
             }
         },
         floatingActionButton = {
+            // Home: mic (standard size) with a small + above it; just + when voice is off.
+            // History: + alone. Insights and Recurring: nothing floating over the content.
+            val micHere = route == "home" && showMic
             AnimatedVisibility(
-                visible = onTab && route != "recurring",
+                visible = route == "home" || route == "history",
                 enter = scaleIn(tween(200)) + fadeIn(tween(200)),
                 exit = scaleOut(tween(150)) + fadeOut(tween(150))
             ) {
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    SmallFloatingActionButton(
-                        onClick = { nav.navigate("add") },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        shape = RoundedCornerShape(14.dp)
-                    ) { Icon(Icons.Rounded.Add, contentDescription = "Add manually") }
-                    LargeFloatingActionButton(
-                        onClick = { vm.voiceOpen = true },
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                    ) { Icon(Icons.Rounded.Mic, contentDescription = "Speak an expense", modifier = Modifier.size(36.dp)) }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (micHere) {
+                        SmallFloatingActionButton(
+                            onClick = { nav.navigate("add") },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            shape = RoundedCornerShape(14.dp)
+                        ) { Icon(Icons.Rounded.Add, contentDescription = "Add manually") }
+                        FloatingActionButton(
+                            onClick = { vm.voiceOpen = true },
+                            shape = CircleShape,
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) { Icon(Icons.Rounded.Mic, contentDescription = "Speak an expense", modifier = Modifier.size(26.dp)) }
+                    } else {
+                        FloatingActionButton(
+                            onClick = { nav.navigate("add") },
+                            shape = RoundedCornerShape(18.dp),
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) { Icon(Icons.Rounded.Add, contentDescription = "Add entry", modifier = Modifier.size(28.dp)) }
+                    }
                 }
             }
         }
@@ -180,7 +197,8 @@ private fun KyeRoot(vm: KyeViewModel) {
                     onSeeAll = { nav.goTab("history") },
                     onSettings = { nav.navigate("settings") },
                     onBudgets = { nav.navigate("budgets") },
-                    onRecurring = { nav.goTab("recurring") }
+                    onRecurring = { nav.goTab("recurring") },
+                    onAddPending = { nav.navigate("add?pending=$it") }
                 )
             }
             composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
@@ -189,10 +207,27 @@ private fun KyeRoot(vm: KyeViewModel) {
                 RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") }, onNewRule = { nav.navigate("rule") })
             }
             composable(
-                "add?id={id}",
-                arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })
+                "add?id={id}&pending={pending}",
+                arguments = listOf(
+                    navArgument("id") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("pending") { type = NavType.LongType; defaultValue = -1L }
+                )
             ) { e ->
-                AddEditScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
+                AddEditScreen(
+                    vm,
+                    txnId = e.arguments?.getLong("id") ?: -1L,
+                    pendingId = e.arguments?.getLong("pending") ?: -1L,
+                    onManageCategories = { nav.navigate("categories") }
+                ) { nav.popBackStack() }
+            }
+            composable("categories") {
+                CategoriesScreen(vm, onOpen = { nav.navigate("category/$it") }) { nav.popBackStack() }
+            }
+            composable(
+                "category/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { e ->
+                CategoryDetailScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
             composable(
                 "rule?id={id}",
@@ -201,7 +236,12 @@ private fun KyeRoot(vm: KyeViewModel) {
                 RuleEditScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
             composable("settings") {
-                SettingsScreen(vm, onBack = { nav.popBackStack() }, onBudgets = { nav.navigate("budgets") })
+                SettingsScreen(
+                    vm,
+                    onBack = { nav.popBackStack() },
+                    onBudgets = { nav.navigate("budgets") },
+                    onCategories = { nav.navigate("categories") }
+                )
             }
             composable("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }
         }

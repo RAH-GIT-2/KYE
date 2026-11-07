@@ -1,5 +1,6 @@
 package com.kye.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -19,7 +20,7 @@ enum class PaymentMode(val label: String) {
 
 enum class Source { MANUAL, VOICE, RECURRING }
 
-enum class CategoryKind { EXPENSE, SAVING }
+enum class CategoryKind { EXPENSE, SAVING, INCOME }
 
 enum class RepeatUnit(val singular: String, val plural: String) {
     DAY("day", "days"),
@@ -58,7 +59,9 @@ data class Subcategory(
     val categoryId: Long,
     val name: String,
     val isTransfer: Boolean = false,
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    /** The catch-all "Others" subcategory every category has. It can't be renamed, hidden or deleted. */
+    @ColumnInfo(defaultValue = "0") val isDefault: Boolean = false
 )
 
 @Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId")])
@@ -117,14 +120,36 @@ data class KeywordRule(
     val isUserLearned: Boolean = false
 )
 
+enum class PendingStatus { NEW, ADDED, DISMISSED }
+
+/** A payment read from a UPI / bank notification, waiting for the user to confirm it. */
+@Entity(tableName = "pending_txn", indices = [Index(value = ["fingerprint"], unique = true)])
+data class PendingTxn(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val amountPaise: Long,
+    val isCredit: Boolean,
+    val merchant: String,
+    val sourceApp: String,
+    val text: String,
+    val postedAt: Long,
+    /** Same payment seen twice (app + bank SMS, or an updated notification) is stored once. */
+    val fingerprint: String,
+    val status: PendingStatus = PendingStatus.NEW
+)
+
 /** A transaction joined with its category and subcategory for display. */
 data class TxnRow(
     @Embedded val txn: Txn,
     val catName: String?,
     val catEmoji: String?,
     val catColor: Long?,
-    val subName: String?
+    val subName: String?,
+    val subIsDefault: Boolean?
 ) {
+    /** Subcategory name, unless it's the catch-all "Others". */
+    val specificSub: String?
+        get() = subName?.takeIf { subIsDefault != true }
+
     val title: String
-        get() = subName?.takeIf { it != "Others" } ?: catName ?: "Uncategorised"
+        get() = specificSub ?: catName ?: "Uncategorised"
 }

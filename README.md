@@ -17,7 +17,16 @@ An India-first Android expense tracker with voice entry in English, Tamil and Ta
 
 Command line: `./gradlew assembleRelease` (needs JDK 17 and the Android SDK).
 
-The release APK is signed with the debug key so it installs directly. Use your own keystore before any Play Store release.
+**Signing.** Release builds are signed with the key named in `keystore.properties` (project root, gitignored), for example:
+```
+storeFile=C:/Users/you/kye-keys/kye-release.jks
+storePassword=…
+keyAlias=kye
+keyPassword=…
+```
+Without that file the release build falls back to the debug key, so it still builds anywhere (including Option A). Every update must be signed with the **same** key, or Android refuses to install it over the old version, and since data lives only on the phone, uninstalling loses it. Keep the `.jks` file and its password backed up somewhere safe.
+
+**Database changes.** Bump the version in `KyeDatabase` and add a `Migration`; never wipe. Schemas are exported to `app/schemas/` (commit them). `DatabaseUpgradeTest` checks that a v1 database upgrades with its data intact.
 
 ## What's in v1
 - **Voice entry**: tap the mic and say "Swiggy la 450 biryani", "auto 120 nethu", "EB bill rendu aayiram" or "பால் 60 ரூபாய்". Several items in one sentence work ("petrol 500 and parking 40"). Every entry shows a confirmation card first. When you correct a category, KYE learns that word. You can also type the sentence instead of speaking it.
@@ -28,8 +37,18 @@ The release APK is signed with the debug key so it installs directly. Use your o
 - **Budgets**: an overall budget and per-category budgets, with alerts at 80% and 100%.
 - **CSV export**, light/dark theme, Indian number formatting (₹1,25,000).
 
-## Not yet built (next steps from the spec)
-Category manager (rename/add/hide), JSON backup and restore, app lock, home-screen widget, reading bank/UPI notifications, receipt photos, event budgets.
+## New in v1.1
+- **Category manager** (Settings → Categories, or "Add / edit" on the add screen): add expense, income or saving categories with your own icon and colour; add, rename, hide, merge or delete subcategories; reorder; manage the voice keywords for each. Hiding keeps old entries intact. A category that's in use can't be deleted outright, only hidden or merged (entries, subcategories, recurring bills, budget and keywords all move over). Every category keeps a catch-all "Others".
+- **Income**: Salary, Business & Freelance, Interest & Returns, Refunds & Cashback, Gifts Received. Home shows income and what's left; Insights shows income, left over and % kept. Existing installs get these categories on upgrade.
+- **Backup & restore** (Settings): one JSON file with everything. Restore replaces the phone's data after a confirmation; a wrong or damaged file is refused before anything changes.
+- **UPI / bank notification reading** (Settings → Read UPI payment notifications): payments from GPay, PhonePe, Paytm, BHIM, CRED, Amazon Pay and bank SMS appear under *Detected payments* on Home. Tap **Add** to open a prefilled entry with a category guess, or **Ignore**. Nothing is added automatically, the same payment from the app and the bank SMS shows once, and only those apps' notifications are read.
+  - On Android 13+, for an APK installed outside the Play Store, Android blocks this permission at first. Go to **App info → ⋮ → Allow restricted settings**, then turn it on.
+
+- **Lighter buttons**: the mic is standard size and only on Home, with a small + above it. History has a single +, and Insights has none. Settings → Voice entry turns the mic off entirely, and it hides itself on phones without speech recognition.
+- **Quick type** on the + screen: type `swiggy 450 biryani` in one line and the form fills itself, using the same parser as voice.
+
+## Not yet built
+App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 
 ## Project layout
 ```

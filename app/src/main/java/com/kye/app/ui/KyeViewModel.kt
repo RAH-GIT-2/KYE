@@ -10,6 +10,10 @@ import androidx.lifecycle.viewModelScope
 import com.kye.app.KyeApp
 import com.kye.app.data.Category
 import com.kye.app.data.CategoryKind
+import com.kye.app.data.KeywordRule
+import com.kye.app.data.PendingStatus
+import com.kye.app.data.PendingTxn
+import com.kye.app.data.UserError
 import com.kye.app.data.PaymentMode
 import com.kye.app.data.RecurringMode
 import com.kye.app.data.RecurringRule
@@ -72,7 +76,21 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     val subcategories: StateFlow<List<Subcategory>> = repo.subcategories
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val categoryMap: StateFlow<Map<Long, Category>> = repo.categories
+    /** Everything, hidden included, for the category manager. */
+    val allCategories: StateFlow<List<Category>> = repo.allCategories
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val allSubcategories: StateFlow<List<Subcategory>> = repo.allSubcategories
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val keywordRules: StateFlow<List<KeywordRule>> = repo.keywordRules
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val pending: StateFlow<List<PendingTxn>> = repo.pending
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Includes hidden categories, so old entries and stats still show their real name. */
+    val categoryMap: StateFlow<Map<Long, Category>> = repo.allCategories
         .map { list -> list.associateBy { it.id } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
@@ -114,6 +132,7 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setTheme(value: String) = viewModelScope.launch { prefs.setTheme(value) }
     fun setVoiceLang(value: String) = viewModelScope.launch { prefs.setVoiceLang(value) }
+    fun setVoiceEnabled(value: Boolean) = viewModelScope.launch { prefs.setVoiceEnabled(value) }
     fun markAskedNotifications() = viewModelScope.launch { prefs.setAskedNotifications() }
 
     // ---------- Helpers ----------
@@ -127,7 +146,9 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         val cat = categoryId?.let { categoryMap.value[it] }
         return when (cat?.kind) {
             CategoryKind.SAVING -> TxnType.SAVING
-            CategoryKind.EXPENSE -> if (fallback == TxnType.SAVING) TxnType.EXPENSE else fallback
+            CategoryKind.INCOME -> TxnType.INCOME
+            CategoryKind.EXPENSE ->
+                if (fallback == TxnType.SAVING || fallback == TxnType.INCOME) TxnType.EXPENSE else fallback
             null -> fallback
         }
     }
@@ -154,8 +175,13 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- Voice ----------
 
     suspend fun parseVoice(text: String): List<VoiceDraft> = withContext(Dispatchers.Default) {
-        val keywords = repo.keywords().map { KeywordEntry(it.phrase, it.categoryId, it.subcategoryId, it.weight) }
         val subs = subcategories.value
+        // Hidden categories and subcategories shouldn't be guessed.
+        val visibleCats = categories.value.map { it.id }.toSet()
+        val visibleSubs = subs.map { it.id }.toSet()
+        val keywords = repo.keywords()
+            .filter { it.categoryId in visibleCats && (it.subcategoryId == null || it.subcategoryId in visibleSubs) }
+            .map { KeywordEntry(it.phrase, it.categoryId, it.subcategoryId, it.weight) }
         val family: (Long) -> Long? = { catId ->
             subs.firstOrNull { it.categoryId == catId && it.name.contains("Family") }?.id
         }
@@ -320,5 +346,116 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
             }
             onDone(ok)
         }
+    }
+
+    // ---------- Backup & restore ----------
+
+    fun exportBackup(uri: Uri, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use { repo.exportBackup(it) }
+                        ?: error("no stream")
+                }.isSuccess
+            }
+            onDone(if (ok) "Backup saved" else "Backup failed")
+        }
+    }
+
+    fun importBackup(uri: Uri, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    val data = getApplication<Application>().contentResolver.openInputStream(uri)?.use { repo.importBackup(it) }
+                        ?: error("no stream")
+                    kyeApp.runRecurringNow()
+                    "Restored ${data.txns.size} entries and ${data.categories.size} categories"
+                } catch (e: UserError) {
+                    e.message ?: "Restore failed"
+                } catch (e: Exception) {
+                    "Restore failed"
+                }
+            }
+            onDone(msg)
+        }
+    }
+
+    // ---------- Category manager ----------
+
+    /** Runs a repository change; reports a [UserError] message (or a generic one) through [onError]. */
+    private fun change(onError: (String) -> Unit, onDone: () -> Unit = {}, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            val err = withContext(Dispatchers.IO) {
+                try {
+                    block()
+                    null
+                } catch (e: UserError) {
+                    e.message
+                } catch (e: Exception) {
+                    "Something went wrong"
+                }
+            }
+            if (err != null) onError(err) else onDone()
+        }
+    }
+
+    fun addCategory(name: String, emoji: String, color: Long, kind: CategoryKind, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.addCategory(name, emoji, color, kind) }
+
+    fun updateCategory(id: Long, name: String, emoji: String, color: Long, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.updateCategory(id, name, emoji, color) }
+
+    fun setCategoryHidden(id: Long, hidden: Boolean, onError: (String) -> Unit) =
+        change(onError) { repo.setCategoryHidden(id, hidden) }
+
+    fun moveCategory(id: Long, up: Boolean, onError: (String) -> Unit) = change(onError) {
+        val ids = allCategories.value.filter { !it.isArchived }.map { it.id }.toMutableList()
+        val i = ids.indexOf(id)
+        val j = if (up) i - 1 else i + 1
+        if (i < 0 || j !in ids.indices) return@change
+        ids[i] = ids[j].also { ids[j] = ids[i] }
+        // Hidden ones keep their place after the visible ones.
+        repo.reorderCategories(ids + allCategories.value.filter { it.isArchived }.map { it.id })
+    }
+
+    fun deleteCategory(id: Long, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.deleteCategory(id) }
+
+    fun mergeCategory(fromId: Long, toId: Long, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.mergeCategory(fromId, toId) }
+
+    suspend fun categoryUsage(id: Long): Int = withContext(Dispatchers.IO) { repo.categoryUsage(id) }
+    suspend fun subUsage(id: Long): Int = withContext(Dispatchers.IO) { repo.subUsage(id) }
+
+    fun addSubcategory(categoryId: Long, name: String, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.addSubcategory(categoryId, name) }
+
+    fun renameSubcategory(id: Long, name: String, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.renameSubcategory(id, name) }
+
+    fun setSubcategoryHidden(id: Long, hidden: Boolean, onError: (String) -> Unit) =
+        change(onError) { repo.setSubcategoryHidden(id, hidden) }
+
+    fun deleteSubcategory(id: Long, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.deleteSubcategory(id) }
+
+    fun mergeSubcategory(fromId: Long, toSubId: Long, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.mergeSubcategory(fromId, toSubId) }
+
+    fun addKeyword(phrase: String, categoryId: Long, subcategoryId: Long?, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.addKeyword(phrase, categoryId, subcategoryId) }
+
+    fun deleteKeyword(id: Long, onError: (String) -> Unit) = change(onError) { repo.deleteKeyword(id) }
+
+    // ---------- Detected payments ----------
+
+    /** Best category guess for a merchant name, using the same keywords as voice entry. */
+    suspend fun guessCategory(text: String): Pair<Long?, Long?> {
+        val d = parseVoice(text).firstOrNull() ?: return null to null
+        return d.categoryId to d.subcategoryId
+    }
+
+    fun resolvePending(id: Long, status: PendingStatus) {
+        viewModelScope.launch(Dispatchers.IO) { repo.setPendingStatus(id, status) }
     }
 }

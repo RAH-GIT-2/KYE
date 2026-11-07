@@ -4,6 +4,10 @@ package com.kye.app.data
  * Default India-first categories, subcategories and voice keywords.
  * Merchant keywords outrank generic ones (weight 3 vs 2); category-level keywords have weight 1.
  * Every category also gets an "Others" subcategory when seeded.
+ *
+ * To ship a new built-in category to people who already use the app: add it with
+ * `since = <next number>` and raise [Seed.VERSION]. On upgrade, only categories newer than the
+ * phone's recorded seed version are added, and never one whose name already exists.
  */
 data class SeedSub(
     val name: String,
@@ -18,13 +22,16 @@ data class SeedCategory(
     val color: Long,
     val subs: List<SeedSub>,
     val keywords: List<String> = emptyList(),
-    val kind: CategoryKind = CategoryKind.EXPENSE
+    val kind: CategoryKind = CategoryKind.EXPENSE,
+    val since: Int = 1
 )
 
 private fun m(name: String, vararg kw: String) = SeedSub(name, kw.toList(), merchant = true)
 private fun g(name: String, vararg kw: String) = SeedSub(name, kw.toList(), merchant = false)
 
 object Seed {
+    const val VERSION = 2
+
     val categories: List<SeedCategory> = listOf(
         SeedCategory(
             "Food & Dining", "🍛", 0xFFFF7A45,
@@ -244,6 +251,51 @@ object Seed {
             ),
             keywords = listOf("savings", "invest", "investment"),
             kind = CategoryKind.SAVING
+        ),
+
+        // ---------- v2: income ----------
+        SeedCategory(
+            "Salary", "💼", 0xFF20BF6B,
+            listOf(
+                g("Salary", "salary", "sambalam", "சம்பளம்", "pay credited"),
+                g("Bonus", "bonus", "incentive"),
+                g("Arrears / Reimbursement", "reimbursement", "arrears")
+            ),
+            kind = CategoryKind.INCOME, since = 2
+        ),
+        SeedCategory(
+            "Business & Freelance", "🧑‍💻", 0xFF3867D6,
+            listOf(
+                g("Business", "business", "sales", "vyabaram", "வியாபாரம்"),
+                g("Freelance", "freelance", "client payment", "project payment"),
+                g("Tuition Taken", "tuition fees received")
+            ),
+            kind = CategoryKind.INCOME, since = 2
+        ),
+        SeedCategory(
+            "Interest & Returns", "📈", 0xFF8854D0,
+            listOf(
+                g("Interest", "interest", "fd interest", "vatti", "வட்டி"),
+                g("Dividends", "dividend", "dividends"),
+                g("Rent Received", "rent received", "vaadagai vandhuchu")
+            ),
+            kind = CategoryKind.INCOME, since = 2
+        ),
+        SeedCategory(
+            "Refunds & Cashback", "↩️", 0xFF45AAF2,
+            listOf(
+                g("Refund", "refund", "refunded"),
+                g("Cashback", "cashback", "cash back", "reward")
+            ),
+            kind = CategoryKind.INCOME, since = 2
+        ),
+        SeedCategory(
+            "Gifts Received", "🎀", 0xFFFA8231,
+            listOf(
+                g("Moi Received", "moi received", "moi vandhuchu", "moi vandhathu"),
+                g("Gift Money", "gift received", "money received")
+            ),
+            kind = CategoryKind.INCOME, since = 2
         )
     )
 }

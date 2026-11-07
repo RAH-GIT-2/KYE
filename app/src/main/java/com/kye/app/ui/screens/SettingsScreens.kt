@@ -2,7 +2,15 @@
 
 package com.kye.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.kye.app.BuildConfig
+import com.kye.app.work.PaymentListener
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -22,7 +30,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -33,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -60,15 +73,29 @@ import com.kye.app.ui.components.ProgressBar
 import java.time.LocalDate
 
 @Composable
-fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit) {
+fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, onCategories: () -> Unit) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val toast: (String) -> Unit = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) {
             vm.exportCsv(uri) { ok ->
                 Toast.makeText(context, if (ok) "Exported" else "Export failed", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.exportBackup(uri, toast)
+    }
+    var restoreUri by remember { mutableStateOf<Uri?>(null) }
+    val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        restoreUri = uri
+    }
+    var listenerOn by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        // Re-check when coming back from the system settings screen.
+        listenerOn = PaymentListener.isEnabled(context)
+        onPauseOrDispose { }
     }
 
     Scaffold(
@@ -81,7 +108,7 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit) 
         }
     ) { pad ->
         Column(
-            Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp),
+            Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             SettingsCard("Appearance") {
@@ -91,29 +118,78 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit) 
                     }
                 }
             }
-            SettingsCard("Default voice language") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChoiceChip("English", (settings?.voiceLang ?: "en-IN") == "en-IN", { vm.setVoiceLang("en-IN") })
-                    ChoiceChip("தமிழ்", settings?.voiceLang == "ta-IN", { vm.setVoiceLang("ta-IN") })
+            SettingsCard("Voice entry") {
+                val voiceOn = settings?.voiceEnabled ?: true
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Show the mic button", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (voiceOn) "On Home, next to +" else "Off · use + to add. Its Quick type box still understands \"swiggy 450 biryani\".",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = voiceOn, onCheckedChange = { vm.setVoiceEnabled(it) })
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Tanglish works best in English mode. For Tamil without internet, download the Tamil offline pack in your phone's Google voice settings.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (voiceOn) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("Language", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChoiceChip("English", (settings?.voiceLang ?: "en-IN") == "en-IN", { vm.setVoiceLang("en-IN") })
+                        ChoiceChip("தமிழ்", settings?.voiceLang == "ta-IN", { vm.setVoiceLang("ta-IN") })
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Tanglish works best in English mode. For Tamil without internet, download the Tamil offline pack in your phone's Google voice settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+            ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
             ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
+            ActionRow(
+                Icons.Rounded.NotificationsActive,
+                "Read UPI payment notifications",
+                if (listenerOn) "On · payments from GPay, PhonePe, Paytm and bank SMS show up on Home for you to confirm"
+                else "Off · tap to allow. Nothing is added without your OK, and nothing leaves the phone. " +
+                    "If KYE is greyed out there: App info → ⋮ → Allow restricted settings, then try again."
+            ) {
+                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+            ActionRow(Icons.Rounded.Backup, "Back up everything", "Entries, categories, keywords, bills and budgets in one file. Save it to Drive.") {
+                backup.launch("KYE-backup-${LocalDate.now()}.json")
+            }
+            ActionRow(Icons.Rounded.Restore, "Restore from backup", "Replaces everything on this phone with the backup") {
+                restorePicker.launch(arrayOf("application/json", "application/octet-stream", "text/plain"))
+            }
             ActionRow(Icons.Rounded.FileDownload, "Export to CSV", "Opens in Excel or Google Sheets") {
                 exporter.launch("KYE-expenses-${LocalDate.now()}.csv")
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "KYE · Know Your Expense · v1.0\nYour data stays on this phone.",
+                "KYE · Know Your Expense · v${BuildConfig.VERSION_NAME}\nYour data stays on this phone. Back it up now and then.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(24.dp))
         }
+    }
+
+    restoreUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { restoreUri = null },
+            title = { Text("Replace everything?") },
+            text = { Text("All entries, categories and settings on this phone are replaced with the backup. Back up first if you're unsure.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    restoreUri = null
+                    vm.importBackup(uri, toast)
+                }) { Text("Restore", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("Cancel") } }
+        )
     }
 }
 

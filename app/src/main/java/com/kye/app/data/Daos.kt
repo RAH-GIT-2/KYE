@@ -3,32 +3,118 @@ package com.kye.app.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 const val ROW_SELECT =
-    "SELECT t.*, c.name AS catName, c.emoji AS catEmoji, c.color AS catColor, s.name AS subName " +
+    "SELECT t.*, c.name AS catName, c.emoji AS catEmoji, c.color AS catColor, s.name AS subName, " +
+        "s.isDefault AS subIsDefault " +
         "FROM txn t LEFT JOIN category c ON c.id = t.categoryId " +
         "LEFT JOIN subcategory s ON s.id = t.subcategoryId"
 
 @Dao
 interface CategoryDao {
+    /** Visible categories, for pickers. */
     @Query("SELECT * FROM category WHERE isArchived = 0 ORDER BY sortOrder")
     fun observeAll(): Flow<List<Category>>
 
-    @Query("SELECT * FROM subcategory WHERE isArchived = 0 ORDER BY id")
+    /** Every category including hidden ones, for the manager and for labelling old entries. */
+    @Query("SELECT * FROM category ORDER BY isArchived, sortOrder")
+    fun observeEverything(): Flow<List<Category>>
+
+    @Query("SELECT * FROM subcategory WHERE isArchived = 0 ORDER BY isDefault, id")
     fun observeSubs(): Flow<List<Subcategory>>
+
+    @Query("SELECT * FROM subcategory ORDER BY isDefault, id")
+    fun observeAllSubs(): Flow<List<Subcategory>>
 
     @Query("SELECT COUNT(*) FROM category")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM category WHERE id = :id")
+    suspend fun get(id: Long): Category?
+
+    @Query("SELECT * FROM category")
+    suspend fun allCategories(): List<Category>
+
+    @Query("SELECT * FROM subcategory WHERE id = :id")
+    suspend fun getSub(id: Long): Subcategory?
+
+    @Query("SELECT * FROM subcategory WHERE categoryId = :categoryId")
+    suspend fun subsOf(categoryId: Long): List<Subcategory>
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM category")
+    suspend fun maxSortOrder(): Int
 
     @Insert
     suspend fun insert(category: Category): Long
 
     @Insert
     suspend fun insertSub(sub: Subcategory): Long
+
+    @Update
+    suspend fun update(category: Category)
+
+    @Update
+    suspend fun updateSub(sub: Subcategory)
+
+    @Update
+    suspend fun updateAll(categories: List<Category>)
+
+    @Query("DELETE FROM category WHERE id = :id")
+    suspend fun deleteCategory(id: Long)
+
+    @Query("DELETE FROM subcategory WHERE id = :id")
+    suspend fun deleteSub(id: Long)
+
+    // ---------- Usage (decides whether a real delete is safe) ----------
+
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM txn WHERE categoryId = :id) + " +
+            "(SELECT COUNT(*) FROM recurring_rule WHERE categoryId = :id)"
+    )
+    suspend fun categoryUsage(id: Long): Int
+
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM txn WHERE subcategoryId = :id) + " +
+            "(SELECT COUNT(*) FROM recurring_rule WHERE subcategoryId = :id)"
+    )
+    suspend fun subUsage(id: Long): Int
+
+    // ---------- Reassignment, used by merge and delete ----------
+
+    @Query("UPDATE txn SET categoryId = :toCat, subcategoryId = :toSub WHERE subcategoryId = :fromSub")
+    suspend fun moveSubTxns(fromSub: Long, toCat: Long, toSub: Long)
+
+    @Query("UPDATE recurring_rule SET categoryId = :toCat, subcategoryId = :toSub WHERE subcategoryId = :fromSub")
+    suspend fun moveSubRules(fromSub: Long, toCat: Long, toSub: Long)
+
+    @Query("UPDATE keyword_rule SET categoryId = :toCat, subcategoryId = :toSub WHERE subcategoryId = :fromSub")
+    suspend fun moveSubKeywords(fromSub: Long, toCat: Long, toSub: Long)
+
+    @Query("UPDATE txn SET categoryId = :toCat WHERE subcategoryId = :subId")
+    suspend fun retagSubTxns(subId: Long, toCat: Long)
+
+    @Query("UPDATE recurring_rule SET categoryId = :toCat WHERE subcategoryId = :subId")
+    suspend fun retagSubRules(subId: Long, toCat: Long)
+
+    @Query("UPDATE keyword_rule SET categoryId = :toCat WHERE subcategoryId = :subId")
+    suspend fun retagSubKeywords(subId: Long, toCat: Long)
+
+    @Query("UPDATE txn SET categoryId = :toCat, subcategoryId = :toSub WHERE categoryId = :fromCat")
+    suspend fun moveCatTxns(fromCat: Long, toCat: Long, toSub: Long)
+
+    @Query("UPDATE recurring_rule SET categoryId = :toCat, subcategoryId = :toSub WHERE categoryId = :fromCat")
+    suspend fun moveCatRules(fromCat: Long, toCat: Long, toSub: Long)
+
+    @Query("UPDATE keyword_rule SET categoryId = :toCat WHERE categoryId = :fromCat AND subcategoryId IS NULL")
+    suspend fun moveCatKeywords(fromCat: Long, toCat: Long)
+
+    @Query("UPDATE subcategory SET categoryId = :toCat WHERE id = :subId")
+    suspend fun reparentSub(subId: Long, toCat: Long)
 }
 
 @Dao
@@ -96,12 +182,70 @@ interface KeywordDao {
     @Query("SELECT * FROM keyword_rule")
     suspend fun all(): List<KeywordRule>
 
+    @Query("SELECT * FROM keyword_rule ORDER BY phrase")
+    fun observeAll(): Flow<List<KeywordRule>>
+
     @Insert
     suspend fun insert(rule: KeywordRule): Long
 
     @Insert
     suspend fun insertAll(rules: List<KeywordRule>)
 
+    @Query("DELETE FROM keyword_rule WHERE id = :id")
+    suspend fun delete(id: Long)
+
     @Query("DELETE FROM keyword_rule WHERE phrase = :phrase AND isUserLearned = 1")
     suspend fun deleteLearned(phrase: String)
+
+    @Query("DELETE FROM keyword_rule WHERE phrase = :phrase AND categoryId = :categoryId AND subcategoryId IS :subcategoryId")
+    suspend fun deleteExact(phrase: String, categoryId: Long, subcategoryId: Long?)
+
+    @Query("DELETE FROM keyword_rule WHERE categoryId = :categoryId")
+    suspend fun deleteForCategory(categoryId: Long)
+}
+
+@Dao
+interface PendingDao {
+    @Query("SELECT * FROM pending_txn WHERE status = 'NEW' ORDER BY postedAt DESC")
+    fun observeNew(): Flow<List<PendingTxn>>
+
+    /** Ignored when the fingerprint was already seen, so repeats never come back. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(p: PendingTxn): Long
+
+    /** The UPI app and the bank SMS for one payment arrive within moments of each other. */
+    @Query("SELECT COUNT(*) FROM pending_txn WHERE amountPaise = :amount AND isCredit = :isCredit AND postedAt BETWEEN :from AND :to")
+    suspend fun countNear(amount: Long, isCredit: Boolean, from: Long, to: Long): Int
+
+    @Query("UPDATE pending_txn SET status = :status WHERE id = :id")
+    suspend fun setStatus(id: Long, status: PendingStatus)
+
+    @Query("DELETE FROM pending_txn WHERE postedAt < :before AND status != 'NEW'")
+    suspend fun prune(before: Long)
+}
+
+/** Raw table access for JSON backup and restore. */
+@Dao
+interface BackupDao {
+    @Query("SELECT * FROM category") suspend fun categories(): List<Category>
+    @Query("SELECT * FROM subcategory") suspend fun subcategories(): List<Subcategory>
+    @Query("SELECT * FROM txn") suspend fun txns(): List<Txn>
+    @Query("SELECT * FROM recurring_rule") suspend fun rules(): List<RecurringRule>
+    @Query("SELECT * FROM budget") suspend fun budgets(): List<Budget>
+    @Query("SELECT * FROM keyword_rule") suspend fun keywords(): List<KeywordRule>
+
+    @Insert suspend fun insertCategories(v: List<Category>)
+    @Insert suspend fun insertSubcategories(v: List<Subcategory>)
+    @Insert suspend fun insertTxns(v: List<Txn>)
+    @Insert suspend fun insertRules(v: List<RecurringRule>)
+    @Insert suspend fun insertBudgets(v: List<Budget>)
+    @Insert suspend fun insertKeywords(v: List<KeywordRule>)
+
+    @Query("DELETE FROM txn") suspend fun clearTxns()
+    @Query("DELETE FROM recurring_rule") suspend fun clearRules()
+    @Query("DELETE FROM budget") suspend fun clearBudgets()
+    @Query("DELETE FROM keyword_rule") suspend fun clearKeywords()
+    @Query("DELETE FROM subcategory") suspend fun clearSubcategories()
+    @Query("DELETE FROM category") suspend fun clearCategories()
+    @Query("DELETE FROM pending_txn") suspend fun clearPending()
 }

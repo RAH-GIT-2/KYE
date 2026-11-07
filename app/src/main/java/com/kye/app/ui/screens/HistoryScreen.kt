@@ -4,6 +4,8 @@ package com.kye.app.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -67,7 +69,7 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 180.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp)
     ) {
         item(key = "title") {
             Text("History", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(vertical = 8.dp))
@@ -92,9 +94,10 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
         }
         item(key = "filters") {
             Column {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ChoiceChip("All", typeFilter == null, { typeFilter = null })
                     ChoiceChip("Expenses", typeFilter == TxnType.EXPENSE, { typeFilter = TxnType.EXPENSE })
+                    ChoiceChip("Income", typeFilter == TxnType.INCOME, { typeFilter = TxnType.INCOME })
                     ChoiceChip("Savings", typeFilter == TxnType.SAVING, { typeFilter = TxnType.SAVING })
                     ChoiceChip("Transfers", typeFilter == TxnType.TRANSFER, { typeFilter = TxnType.TRANSFER })
                 }

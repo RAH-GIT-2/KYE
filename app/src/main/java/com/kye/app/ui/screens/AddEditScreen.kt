@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -19,10 +20,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
@@ -49,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,12 +62,15 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kye.app.data.CategoryKind
 import com.kye.app.data.PaymentMode
+import com.kye.app.data.PendingStatus
 import com.kye.app.data.RepeatUnit
 import com.kye.app.data.Source
 import com.kye.app.data.Txn
@@ -80,9 +87,11 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 @Composable
-fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
+fun AddEditScreen(vm: KyeViewModel, txnId: Long, pendingId: Long = -1L, onManageCategories: () -> Unit = {}, onBack: () -> Unit) {
     val context = LocalContext.current
     val categories by vm.categories.collectAsStateWithLifecycle()
+    val allCategories by vm.allCategories.collectAsStateWithLifecycle()
+    val allSubs by vm.allSubcategories.collectAsStateWithLifecycle()
     val subcategories by vm.subcategories.collectAsStateWithLifecycle()
 
     var existing by remember { mutableStateOf<Txn?>(null) }
@@ -99,6 +108,35 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
     var showDate by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    var quick by remember { mutableStateOf("") }
+
+    /** Quick type: "swiggy 450 biryani" fills the form, using the same parser as voice entry. */
+    fun fillFromQuick() {
+        val text = quick.trim()
+        if (text.isEmpty()) return
+        scope.launch {
+            val drafts = vm.parseVoice(text)
+            val d = drafts.firstOrNull()
+            if (d == null || (d.amountText.isBlank() && d.categoryId == null)) {
+                Toast.makeText(context, "Couldn't read that. Try \"swiggy 450\".", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (d.amountText.isNotBlank()) amount = d.amountText
+            if (d.categoryId != null) {
+                catId = d.categoryId
+                subId = d.subcategoryId
+                type = vm.typeFor(d.categoryId, d.subcategoryId)
+            }
+            date = d.date
+            payment = d.paymentMode
+            if (d.note.isNotBlank()) note = d.note
+            quick = ""
+            if (drafts.size > 1) {
+                Toast.makeText(context, "Filled the first item only. Add the others separately.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     LaunchedEffect(txnId) {
         if (txnId > 0) {
@@ -112,13 +150,30 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
                 payment = t.paymentMode
                 note = t.note
             }
+        } else if (pendingId > 0) {
+            // Prefill from a payment read off a UPI / bank notification.
+            vm.pending.value.firstOrNull { it.id == pendingId }?.let { p ->
+                amount = Money.plain(p.amountPaise)
+                type = if (p.isCredit) TxnType.INCOME else TxnType.EXPENSE
+                date = Dates.toLocalDate(p.postedAt)
+                payment = PaymentMode.UPI
+                note = p.merchant
+                val (c, s) = vm.guessCategory(p.merchant)
+                val guessedKind = c?.let { id -> categories.firstOrNull { it.id == id }?.kind }
+                if (guessedKind == kindOf(type)) {
+                    catId = c
+                    subId = s
+                }
+            }
         } else {
             runCatching { focus.requestFocus() }
         }
     }
 
-    val kind = if (type == TxnType.SAVING) CategoryKind.SAVING else CategoryKind.EXPENSE
-    val visibleCats = categories.filter { it.kind == kind }
+    val kind = kindOf(type)
+    // An old entry may use a category that's hidden now; keep it selectable while editing.
+    val visibleCats = (categories + allCategories.filter { it.id == catId && it.isArchived })
+        .filter { it.kind == kind }
 
     fun save() {
         val paise = Money.parseToPaise(amount)
@@ -145,9 +200,10 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
             note = note.trim()
         )
         vm.saveTxn(txn) { msg ->
+            if (pendingId > 0) vm.resolvePending(pendingId, PendingStatus.ADDED)
             if (repeat && old == null) {
                 val name = note.trim().ifBlank {
-                    subcategories.firstOrNull { it.id == subId }?.name?.takeIf { it != "Others" }
+                    allSubs.firstOrNull { it.id == subId }?.takeIf { !it.isDefault }?.name
                         ?: categories.firstOrNull { it.id == catId }?.name ?: "Recurring"
                 }
                 vm.ruleFromTxn(txn, name, repeatUnit, repeatEvery)
@@ -193,21 +249,46 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            if (txnId <= 0 && pendingId <= 0) {
+                OutlinedTextField(
+                    value = quick,
+                    onValueChange = { quick = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Quick type") },
+                    placeholder = { Text("swiggy 450 biryani") },
+                    supportingText = { Text("Type it in one line and the form below fills itself") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { fillFromQuick() }),
+                    trailingIcon = {
+                        if (quick.isNotBlank()) {
+                            IconButton(onClick = { fillFromQuick() }) {
+                                Icon(Icons.Rounded.AutoFixHigh, contentDescription = "Fill the form")
+                            }
+                        }
+                    }
+                )
+            }
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                val options = listOf(TxnType.EXPENSE to "Expense", TxnType.SAVING to "Saving", TxnType.TRANSFER to "Transfer")
+                val options = listOf(
+                    TxnType.EXPENSE to "Expense", TxnType.INCOME to "Income",
+                    TxnType.SAVING to "Saving", TxnType.TRANSFER to "Transfer"
+                )
                 options.forEachIndexed { i, (t, label) ->
                     SegmentedButton(
                         selected = type == t,
                         onClick = {
-                            val kindChanged = (t == TxnType.SAVING) != (type == TxnType.SAVING)
+                            val kindChanged = kindOf(t) != kindOf(type)
                             type = t
                             if (kindChanged) {
                                 catId = null
                                 subId = null
                             }
                         },
-                        shape = SegmentedButtonDefaults.itemShape(i, options.size)
-                    ) { Text(label) }
+                        shape = SegmentedButtonDefaults.itemShape(i, options.size),
+                        icon = {}
+                    ) { Text(label, maxLines = 1, style = MaterialTheme.typography.labelMedium) }
                 }
             }
 
@@ -229,7 +310,10 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
                 )
             )
 
-            Label("Category")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { Label("Category") }
+                TextButton(onClick = onManageCategories) { Text("Add / edit") }
+            }
             CategoryGrid(visibleCats, catId) { c ->
                 if (catId != c.id) {
                     catId = c.id
@@ -241,7 +325,9 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
                 Column {
                     Label("Subcategory")
                     Spacer(Modifier.height(8.dp))
-                    SubcategoryChips(subcategories.filter { it.categoryId == catId }, subId) { s ->
+                    val subs = subcategories.filter { it.categoryId == catId } +
+                        allSubs.filter { it.id == subId && it.isArchived }
+                    SubcategoryChips(subs, subId) { s ->
                         subId = s.id
                         type = vm.typeFor(catId, s.id, if (type == TxnType.TRANSFER && !s.isTransfer) TxnType.EXPENSE else type)
                     }
@@ -262,7 +348,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
                 Text("Change", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
             }
 
-            Label("Paid with")
+            Label(if (type == TxnType.INCOME) "Received via" else "Paid with")
             PaymentChips(payment) { payment = it }
 
             OutlinedTextField(
@@ -324,6 +410,12 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
         )
     }
+}
+
+private fun kindOf(type: TxnType): CategoryKind = when (type) {
+    TxnType.SAVING -> CategoryKind.SAVING
+    TxnType.INCOME -> CategoryKind.INCOME
+    TxnType.EXPENSE, TxnType.TRANSFER -> CategoryKind.EXPENSE
 }
 
 @Composable

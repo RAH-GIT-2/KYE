@@ -15,6 +15,7 @@ data class HomeState(
     val loaded: Boolean = false,
     val spent: Long = 0,
     val saved: Long = 0,
+    val income: Long = 0,
     val today: Long = 0,
     val budget: Long? = null,
     val recent: List<TxnRow> = emptyList(),
@@ -47,6 +48,7 @@ data class AnalyticsState(
     val rangeLabel: String,
     val spent: Long,
     val saved: Long,
+    val income: Long,
     val prevSpent: Long,
     val count: Int,
     val slices: List<Slice>,
@@ -88,6 +90,7 @@ object Stats {
         val dayTo = Dates.endOfDay(today)
         var spent = 0L
         var saved = 0L
+        var income = 0L
         var todaySum = 0L
         for (r in txns) {
             val t = r.txn
@@ -95,6 +98,7 @@ object Stats {
                 when (t.type) {
                     TxnType.EXPENSE -> spent += t.amountPaise
                     TxnType.SAVING -> saved += t.amountPaise
+                    TxnType.INCOME -> income += t.amountPaise
                     else -> Unit
                 }
             }
@@ -104,6 +108,7 @@ object Stats {
             loaded = true,
             spent = spent,
             saved = saved,
+            income = income,
             today = todaySum,
             budget = budgets[0L],
             recent = txns.take(8),
@@ -173,6 +178,7 @@ object Stats {
 
         val spent = expenses.sumOf { it.txn.amountPaise }
         val saved = inRange.filter { it.txn.type == TxnType.SAVING }.sumOf { it.txn.amountPaise }
+        val income = inRange.filter { it.txn.type == TxnType.INCOME }.sumOf { it.txn.amountPaise }
         val prevSpent = prevExpenses.sumOf { it.txn.amountPaise }
 
         // Category slices with subcategory breakdown
@@ -216,9 +222,9 @@ object Stats {
             CompareRow(s.name, s.emoji, s.color, s.total, prevByCat[s.categoryId] ?: 0L)
         }
 
-        // Top merchants = most-spent subcategories (excluding "Others")
-        val merchants = expenses.filter { it.subName != null && it.subName != "Others" }
-            .groupBy { it.subName!! }
+        // Top merchants = most-spent subcategories (excluding each category's catch-all)
+        val merchants = expenses.filter { it.specificSub != null }
+            .groupBy { it.specificSub!! }
             .map { (n, rs) -> MerchantRow(n, rs.first().catEmoji ?: "❔", rs.sumOf { it.txn.amountPaise }, rs.size) }
             .sortedByDescending { it.total }
             .take(6)
@@ -255,6 +261,7 @@ object Stats {
             rangeLabel = label,
             spent = spent,
             saved = saved,
+            income = income,
             prevSpent = prevSpent,
             count = expenses.size,
             slices = slices,

@@ -15,8 +15,8 @@ import java.time.LocalDate
 
 class AppContainer(context: Context) {
     val db: KyeDatabase = KyeDatabase.build(context)
-    val repo = Repository(db)
     val prefs = Prefs(context)
+    val repo = Repository(db, prefs)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 }
 
