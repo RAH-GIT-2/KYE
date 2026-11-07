@@ -1,0 +1,73 @@
+package com.kye.app.work
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.kye.app.MainActivity
+import com.kye.app.R
+import com.kye.app.data.RecurringRule
+import com.kye.app.domain.Dates
+import com.kye.app.domain.Money
+import java.time.LocalDate
+
+object Notifier {
+    const val CHANNEL_BILLS = "bills"
+
+    fun createChannels(context: Context) {
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_BILLS, "Bill reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Reminders for recurring bills like rent, EB and recharges"
+            }
+        )
+    }
+
+    private fun canNotify(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    @SuppressLint("MissingPermission")
+    fun showReminder(context: Context, rule: RecurringRule) {
+        if (!canNotify(context)) return
+        val due = LocalDate.ofEpochDay(rule.nextDueDate)
+        val whenText = Dates.label(due).let { if (it == "Today" || it == "Tomorrow") it.lowercase() else "on $it" }
+        val amountText = if (rule.amountPaise > 0) " · ${Money.format(rule.amountPaise)}" else ""
+        val id = rule.id.toInt()
+
+        val open = PendingIntent.getActivity(
+            context, id, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_BILLS)
+            .setSmallIcon(R.drawable.ic_stat_kye)
+            .setContentTitle("${rule.name} due $whenText")
+            .setContentText("Tap Paid once it's done$amountText")
+            .setContentIntent(open)
+            .setAutoCancel(true)
+
+        if (rule.amountPaise > 0) {
+            builder.addAction(0, "Paid", actionIntent(context, rule.id, ReminderReceiver.ACTION_PAID))
+        }
+        builder.addAction(0, "Skip", actionIntent(context, rule.id, ReminderReceiver.ACTION_SKIP))
+
+        NotificationManagerCompat.from(context).notify(id, builder.build())
+    }
+
+    private fun actionIntent(context: Context, ruleId: Long, action: String): PendingIntent {
+        val intent = Intent(context, ReminderReceiver::class.java)
+            .setAction(action)
+            .putExtra(ReminderReceiver.EXTRA_RULE_ID, ruleId)
+        val code = (ruleId * 10 + if (action == ReminderReceiver.ACTION_PAID) 1 else 2).toInt()
+        return PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+}

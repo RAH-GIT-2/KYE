@@ -1,0 +1,336 @@
+package com.kye.app.voice
+
+import com.kye.app.data.PaymentMode
+import java.math.BigDecimal
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.util.Locale
+
+/** A keyword the parser can match: phrase → category (and optional subcategory). */
+data class KeywordEntry(val phrase: String, val categoryId: Long, val subcategoryId: Long?, val weight: Int)
+
+/** What the parser understood from one spoken item. */
+data class ParsedEntry(
+    val amountPaise: Long?,
+    val categoryId: Long?,
+    val subcategoryId: Long?,
+    val date: LocalDate,
+    val paymentMode: PaymentMode?,
+    val note: String,
+    val matchedPhrase: String?,
+    val raw: String
+)
+
+/**
+ * Rule-based parser for English, Tanglish and Tamil-script expense sentences:
+ * "Swiggy la 450 biryani", "auto 120 nethu", "EB bill rendu aayiram", "பால் 60 ரூபாய்".
+ * Pure Kotlin, so it is unit-tested on the JVM.
+ */
+object VoiceParser {
+
+    private val CONNECTORS = setOf("and", "um", "apram", "appuram", "aprom", "then", "அப்புறம்", "அப்றம்", "மற்றும்", ",")
+
+    private val FILLERS = setOf(
+        "rs", "rupees", "rupee", "rupai", "roobai", "rubai", "ruba", "rupay", "ரூபாய்", "ரூ", "inr",
+        "for", "to", "paid", "pay", "spent", "spend", "on", "at", "the", "a", "an", "la", "le", "ku", "kku",
+        "ikku", "ukku", "ah", "nu", "oda", "kodutha", "kuduthen", "koduthen", "kuduthathu", "panninen", "pannen",
+        "vaanginen", "vanginen", "bought", "buy", "got", "from", "via", "through", "using", "by", "is", "was",
+        "my", "in", "of", "with", "last", "கொடுத்தேன்", "செலவு", "expense", "add"
+    )
+
+    private val FAMILY = listOf(
+        "amma", "appa", "wife", "husband", "mom", "dad", "mother", "father", "family", "thambi", "akka",
+        "anna", "thangachi", "paati", "thatha", "son", "daughter", "magan", "magal", "brother", "sister",
+        "அம்மா", "அப்பா", "மனைவி", "தம்பி", "அக்கா", "அண்ணா", "தங்கச்சி"
+    )
+
+    /** Number words that add to the running value. 100 ("nooru") multiplies a preceding 1–9. */
+    private val NUMBERS: Map<String, Long> = buildMap {
+        listOf(
+            "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7,
+            "eight" to 8, "nine" to 9, "ten" to 10, "eleven" to 11, "twelve" to 12, "thirteen" to 13,
+            "fourteen" to 14, "fifteen" to 15, "sixteen" to 16, "seventeen" to 17, "eighteen" to 18,
+            "nineteen" to 19, "twenty" to 20, "thirty" to 30, "forty" to 40, "fourty" to 40, "fifty" to 50,
+            "sixty" to 60, "seventy" to 70, "eighty" to 80, "ninety" to 90,
+            // Tanglish
+            "onnu" to 1, "oru" to 1, "rendu" to 2, "randu" to 2, "irandu" to 2, "moonu" to 3, "munu" to 3,
+            "naalu" to 4, "nalu" to 4, "anju" to 5, "ainthu" to 5, "aaru" to 6, "ezhu" to 7, "ettu" to 8,
+            "onbathu" to 9, "pathu" to 10, "iruvathu" to 20, "irubathu" to 20, "muppathu" to 30,
+            "naarpathu" to 40, "narpathu" to 40, "aimbathu" to 50, "ambathu" to 50, "arubathu" to 60,
+            "ezhubathu" to 70, "enbathu" to 80, "thonnooru" to 90, "thonnuru" to 90, "nooru" to 100,
+            "nuru" to 100, "irunooru" to 200, "irunuru" to 200, "munnooru" to 300, "naanooru" to 400,
+            "ainooru" to 500, "anjooru" to 500, "arunooru" to 600, "ezhunooru" to 700, "ennooru" to 800,
+            "thollayiram" to 900,
+            // Tamil script
+            "ஒன்று" to 1, "ஒரு" to 1, "இரண்டு" to 2, "ரெண்டு" to 2, "மூன்று" to 3, "மூணு" to 3,
+            "நான்கு" to 4, "நாலு" to 4, "ஐந்து" to 5, "அஞ்சு" to 5, "ஆறு" to 6, "ஏழு" to 7, "எட்டு" to 8,
+            "ஒன்பது" to 9, "பத்து" to 10, "இருபது" to 20, "முப்பது" to 30, "நாற்பது" to 40, "ஐம்பது" to 50,
+            "அம்பது" to 50, "அறுபது" to 60, "எழுபது" to 70, "எண்பது" to 80, "தொண்ணூறு" to 90, "நூறு" to 100,
+            "இருநூறு" to 200, "முந்நூறு" to 300, "முன்னூறு" to 300, "நானூறு" to 400, "ஐந்நூறு" to 500,
+            "ஐநூறு" to 500, "அறுநூறு" to 600, "எழுநூறு" to 700, "எண்ணூறு" to 800, "தொள்ளாயிரம்" to 900
+        ).forEach { (k, v) -> put(k, v.toLong()) }
+    }
+
+    private val MULTIPLIERS: Map<String, Long> = mapOf(
+        "hundred" to 100L, "thousand" to 1000L, "aayiram" to 1000L, "ayiram" to 1000L, "aayirathu" to 1000L,
+        "aayirathi" to 1000L, "ஆயிரம்" to 1000L, "ஆயிரத்து" to 1000L, "lakh" to 100_000L, "lakhs" to 100_000L,
+        "lac" to 100_000L, "laksham" to 100_000L, "latcham" to 100_000L, "லட்சம்" to 100_000L, "k" to 1000L
+    )
+
+    private val DATE_PHRASES: List<Pair<String, Long>> = listOf(
+        "day before yesterday" to 2L, "munthanethu" to 2L, "munthaanethu" to 2L, "munthanaal" to 2L,
+        "முந்தாநேத்து" to 2L, "முந்தாநாள்" to 2L,
+        "yesterday" to 1L, "nethu" to 1L, "neththu" to 1L, "netru" to 1L, "naethu" to 1L, "நேற்று" to 1L, "நேத்து" to 1L,
+        "today" to 0L, "innaiku" to 0L, "innaikku" to 0L, "inniki" to 0L, "innikku" to 0L, "indru" to 0L,
+        "இன்று" to 0L, "இன்னைக்கு" to 0L
+    )
+
+    private val WEEKDAYS: Map<String, DayOfWeek> = mapOf(
+        "monday" to DayOfWeek.MONDAY, "tuesday" to DayOfWeek.TUESDAY, "wednesday" to DayOfWeek.WEDNESDAY,
+        "thursday" to DayOfWeek.THURSDAY, "friday" to DayOfWeek.FRIDAY, "saturday" to DayOfWeek.SATURDAY,
+        "sunday" to DayOfWeek.SUNDAY
+    )
+
+    private val PAYMENTS: List<Pair<String, PaymentMode>> = listOf(
+        "credit card" to PaymentMode.CREDIT_CARD, "debit card" to PaymentMode.DEBIT_CARD,
+        "net banking" to PaymentMode.NET_BANKING, "netbanking" to PaymentMode.NET_BANKING,
+        "google pay" to PaymentMode.UPI, "g pay" to PaymentMode.UPI, "gpay" to PaymentMode.UPI,
+        "phone pe" to PaymentMode.UPI, "phonepe" to PaymentMode.UPI, "paytm" to PaymentMode.UPI,
+        "bhim" to PaymentMode.UPI, "upi" to PaymentMode.UPI, "scan" to PaymentMode.UPI,
+        "cash" to PaymentMode.CASH, "kaasu" to PaymentMode.CASH, "காசு" to PaymentMode.CASH,
+        "rokkam" to PaymentMode.CASH, "ரொக்கம்" to PaymentMode.CASH,
+        "card" to PaymentMode.DEBIT_CARD, "wallet" to PaymentMode.WALLET
+    )
+
+    private val DIGIT = Regex("^(\\d+(?:\\.\\d+)?)(?:(k|lakhs?|l)(?![a-z]))?")
+
+    // ---------------------------------------------------------------------------------------
+
+    fun normalize(input: String): String {
+        var x = input.lowercase(Locale.ROOT)
+        x = x.replace("₹", " ")
+        repeat(3) { x = Regex("(\\d),(\\d)").replace(x, "\$1\$2") }
+        x = x.replace("'", "").replace("’", "")
+        x = x.replace(Regex("[,;]"), " , ")
+        x = Regex("(?<!\\d)\\.|\\.(?!\\d)").replace(x, " ")
+        x = x.replace(Regex("[!?:\"()\\[\\]–—_/-]"), " ")
+        return x.replace(Regex("\\s+"), " ").trim()
+    }
+
+    fun tokenize(s: String): List<String> = normalize(s).split(' ').filter { it.isNotBlank() }
+
+    /** A spoken word matches a keyword word exactly, or with a short Tanglish/Tamil suffix ("swiggyla"). */
+    private fun wordMatches(token: String, word: String, allowSuffix: Boolean): Boolean =
+        token == word || (allowSuffix && word.length >= 4 && token.startsWith(word) && token.length - word.length <= 6)
+
+    private fun find(tokens: List<String>, used: BooleanArray, phrase: List<String>): IntRange? {
+        if (phrase.isEmpty() || phrase.size > tokens.size) return null
+        for (i in 0..tokens.size - phrase.size) {
+            var ok = true
+            for (j in phrase.indices) {
+                if (used[i + j] || !wordMatches(tokens[i + j], phrase[j], j == phrase.lastIndex)) {
+                    ok = false
+                    break
+                }
+            }
+            if (ok) return i until i + phrase.size
+        }
+        return null
+    }
+
+    fun parse(
+        text: String,
+        keywords: List<KeywordEntry>,
+        familySubFor: (Long) -> Long? = { null },
+        today: LocalDate = LocalDate.now()
+    ): List<ParsedEntry> {
+        val all = tokenize(text)
+        if (all.isEmpty()) return emptyList()
+
+        // Split into items on connectors, then merge items that have no amount into their neighbour.
+        val pieces = ArrayList<MutableList<String>>()
+        var current = ArrayList<String>()
+        for (t in all) {
+            if (t in CONNECTORS) {
+                if (current.isNotEmpty()) pieces += current
+                current = ArrayList()
+            } else current += t
+        }
+        if (current.isNotEmpty()) pieces += current
+
+        val merged = ArrayList<MutableList<String>>()
+        for (p in pieces) {
+            if (findAmount(p, BooleanArray(p.size)) == null && merged.isNotEmpty()) merged.last().addAll(p)
+            else merged += p
+        }
+        if (merged.size > 1 && findAmount(merged.first(), BooleanArray(merged.first().size)) == null) {
+            val first = merged.removeAt(0)
+            merged[0] = (first + merged[0]).toMutableList()
+        }
+
+        val prepared = keywords.map { it to tokenize(it.phrase) }.filter { it.second.isNotEmpty() }
+        return merged.map { parseItem(it, prepared, familySubFor, today, text) }
+    }
+
+    private data class Amount(val paise: Long, val range: IntRange)
+
+    private fun findAmount(tokens: List<String>, used: BooleanArray): Amount? {
+        // 1) Digits first: "450", "1.5k", "2 thousand", "450la". The largest wins ("1mg 450" → 450).
+        var bestDigit: Amount? = null
+        for (i in tokens.indices) {
+            if (used[i]) continue
+            val m = DIGIT.find(tokens[i]) ?: continue
+            var value = BigDecimal(m.groupValues[1])
+            var end = i
+            when (m.groupValues[2]) {
+                "k" -> value = value.multiply(BigDecimal(1000))
+                "l", "lakh", "lakhs" -> value = value.multiply(BigDecimal(100_000))
+                else -> {
+                    val next = tokens.getOrNull(i + 1)
+                    val mult = next?.let { MULTIPLIERS[it] }
+                    if (mult != null) {
+                        value = value.multiply(BigDecimal(mult))
+                        end = i + 1
+                    }
+                }
+            }
+            val paise = value.multiply(BigDecimal(100)).toLong()
+            if (paise > 0 && (bestDigit == null || paise > bestDigit.paise)) bestDigit = Amount(paise, i..end)
+        }
+        if (bestDigit != null) return bestDigit
+        // 2) Number words: "four fifty", "rendu aayiram", "இருநூறு ஐம்பது"
+        var i = 0
+        while (i < tokens.size) {
+            if (!used[i]) {
+                val r = wordNumber(tokens, i)
+                if (r != null) return Amount(r.first * 100, i until i + r.second)
+            }
+            i++
+        }
+        return null
+    }
+
+    /** Returns (value, tokens consumed) for a run of number words starting at [start]. */
+    private fun wordNumber(tokens: List<String>, start: Int): Pair<Long, Int>? {
+        var total = 0L
+        var current = 0L
+        var any = false
+        var hasMult = false
+        var lastSingleDigit = false
+        var i = start
+        while (i < tokens.size) {
+            val t = tokens[i]
+            val n = NUMBERS[t]
+            val mult = MULTIPLIERS[t]
+            if (n != null) {
+                current = when {
+                    n == 100L && current in 1L..9L -> current * 100
+                    n in 10L..99L && lastSingleDigit && current in 1L..9L -> current * 100 + n   // "four fifty" = 450
+                    else -> current + n
+                }
+                lastSingleDigit = n in 1L..9L
+                any = true
+            } else if (mult != null && (any || t != "k")) {
+                current = (if (current == 0L) 1L else current) * mult
+                if (mult >= 1000) {
+                    total += current
+                    current = 0
+                }
+                hasMult = true
+                any = true
+                lastSingleDigit = false
+            } else break
+            i++
+        }
+        if (!any) return null
+        val value = total + current
+        if (value < 2 && !hasMult) return null
+        return value to (i - start)
+    }
+
+    private fun parseItem(
+        tokens: List<String>,
+        keywords: List<Pair<KeywordEntry, List<String>>>,
+        familySubFor: (Long) -> Long?,
+        today: LocalDate,
+        raw: String
+    ): ParsedEntry {
+        val used = BooleanArray(tokens.size)
+
+        val amount = findAmount(tokens, used)
+        amount?.range?.forEach { used[it] = true }
+
+        // Date
+        var date = today
+        run {
+            for ((phrase, back) in DATE_PHRASES) {
+                val r = find(tokens, used, phrase.split(' '))
+                if (r != null) {
+                    r.forEach { used[it] = true }
+                    date = today.minusDays(back)
+                    return@run
+                }
+            }
+            for (i in tokens.indices) {
+                val wd = WEEKDAYS[tokens[i]] ?: continue
+                if (used[i]) continue
+                var diff = ((today.dayOfWeek.value - wd.value + 7) % 7).toLong()
+                if (diff == 0L && i > 0 && tokens[i - 1] == "last") diff = 7
+                date = today.minusDays(diff)
+                used[i] = true
+                return@run
+            }
+        }
+
+        // Category: highest weight wins, then the longest phrase
+        var best: Pair<KeywordEntry, IntRange>? = null
+        var bestScore = -1
+        for ((kw, words) in keywords) {
+            val r = find(tokens, used, words) ?: continue
+            val score = kw.weight * 1000 + kw.phrase.length
+            if (score > bestScore) {
+                bestScore = score
+                best = kw to r
+            }
+        }
+        best?.second?.forEach { used[it] = true }
+        var categoryId = best?.first?.categoryId
+        var subId = best?.first?.subcategoryId
+
+        // Family recharge: "Jio recharge amma ku 349"
+        if (categoryId != null) {
+            val familySub = familySubFor(categoryId)
+            if (familySub != null && tokens.indices.any { i -> FAMILY.any { wordMatches(tokens[i], it, true) } }) {
+                subId = familySub
+            }
+        }
+
+        // Payment mode
+        var payment: PaymentMode? = null
+        for ((phrase, mode) in PAYMENTS) {
+            val r = find(tokens, used, phrase.split(' '))
+            if (r != null) {
+                r.forEach { used[it] = true }
+                payment = mode
+                break
+            }
+        }
+
+        val note = tokens.indices
+            .filter { !used[it] && tokens[it] !in FILLERS && tokens[it] != "," }
+            .joinToString(" ") { tokens[it] }
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+
+        if (categoryId == null) subId = null
+        return ParsedEntry(
+            amountPaise = amount?.paise,
+            categoryId = categoryId,
+            subcategoryId = subId,
+            date = date,
+            paymentMode = payment,
+            note = note,
+            matchedPhrase = best?.first?.phrase,
+            raw = raw
+        )
+    }
+}

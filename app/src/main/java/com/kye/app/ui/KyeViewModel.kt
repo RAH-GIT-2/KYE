@@ -1,0 +1,324 @@
+package com.kye.app.ui
+
+import android.app.Application
+import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.kye.app.KyeApp
+import com.kye.app.data.Category
+import com.kye.app.data.CategoryKind
+import com.kye.app.data.PaymentMode
+import com.kye.app.data.RecurringMode
+import com.kye.app.data.RecurringRule
+import com.kye.app.data.RepeatUnit
+import com.kye.app.data.Settings
+import com.kye.app.data.Source
+import com.kye.app.data.Subcategory
+import com.kye.app.data.Txn
+import com.kye.app.data.TxnRow
+import com.kye.app.data.TxnType
+import com.kye.app.domain.AnalyticsState
+import com.kye.app.domain.Dates
+import com.kye.app.domain.HomeState
+import com.kye.app.domain.Period
+import com.kye.app.domain.Recurrence
+import com.kye.app.domain.Stats
+import com.kye.app.voice.KeywordEntry
+import com.kye.app.voice.ParsedEntry
+import com.kye.app.voice.VoiceParser
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.LocalTime
+
+/** One editable item on the voice confirmation sheet. */
+data class VoiceDraft(
+    val key: Int,
+    val amountText: String,
+    val categoryId: Long?,
+    val subcategoryId: Long?,
+    val date: LocalDate,
+    val paymentMode: PaymentMode,
+    val note: String,
+    val parsedCategoryId: Long?,
+    val parsedSubcategoryId: Long?,
+    val matchedPhrase: String?,
+    val raw: String
+)
+
+class KyeViewModel(app: Application) : AndroidViewModel(app) {
+    private val kyeApp = app as KyeApp
+    private val container = kyeApp.container
+    val repo = container.repo
+    private val prefs = container.prefs
+
+    val settings: StateFlow<Settings?> = prefs.settings
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val categories: StateFlow<List<Category>> = repo.categories
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val subcategories: StateFlow<List<Subcategory>> = repo.subcategories
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val categoryMap: StateFlow<Map<Long, Category>> = repo.categories
+        .map { list -> list.associateBy { it.id } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    val txns: StateFlow<List<TxnRow>> = repo.transactions
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val rules: StateFlow<List<RecurringRule>> = repo.rules
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val budgets: StateFlow<Map<Long, Long>> = repo.budgets
+        .map { list -> list.associate { it.categoryId to it.monthlyLimitPaise } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    val home: StateFlow<HomeState> = combine(txns, rules, budgets, categoryMap) { t, r, b, c ->
+        Stats.home(t, r, b, c, LocalDate.now())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, HomeState())
+
+    val period = MutableStateFlow(Period.THIS_MONTH)
+
+    val analytics: StateFlow<AnalyticsState?> = combine(txns, period, rules, budgets, categoryMap) { t, p, r, b, c ->
+        Stats.analytics(t, p, r, b, c, LocalDate.now())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val monthByCategory: StateFlow<Map<Long?, Long>> = txns
+        .map { Stats.monthSpendByCategory(it, LocalDate.now()) }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    var voiceOpen by mutableStateOf(false)
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.ensureSeeded()
+            kyeApp.runRecurringNow()
+        }
+    }
+
+    // ---------- Settings ----------
+
+    fun setTheme(value: String) = viewModelScope.launch { prefs.setTheme(value) }
+    fun setVoiceLang(value: String) = viewModelScope.launch { prefs.setVoiceLang(value) }
+    fun markAskedNotifications() = viewModelScope.launch { prefs.setAskedNotifications() }
+
+    // ---------- Helpers ----------
+
+    fun subsOf(categoryId: Long?): List<Subcategory> =
+        if (categoryId == null) emptyList() else subcategories.value.filter { it.categoryId == categoryId }
+
+    fun typeFor(categoryId: Long?, subcategoryId: Long?, fallback: TxnType = TxnType.EXPENSE): TxnType {
+        val sub = subcategories.value.firstOrNull { it.id == subcategoryId }
+        if (sub?.isTransfer == true) return TxnType.TRANSFER
+        val cat = categoryId?.let { categoryMap.value[it] }
+        return when (cat?.kind) {
+            CategoryKind.SAVING -> TxnType.SAVING
+            CategoryKind.EXPENSE -> if (fallback == TxnType.SAVING) TxnType.EXPENSE else fallback
+            null -> fallback
+        }
+    }
+
+    // ---------- Transactions ----------
+
+    suspend fun loadTxn(id: Long): Txn? = withContext(Dispatchers.IO) { repo.getTxn(id) }
+
+    fun saveTxn(txn: Txn, onDone: (String?) -> Unit) {
+        viewModelScope.launch {
+            val name = txn.categoryId?.let { categoryMap.value[it]?.name }
+            val msg = withContext(Dispatchers.IO) { repo.saveWithBudgetCheck(txn, name) }
+            onDone(msg)
+        }
+    }
+
+    fun deleteTxn(txn: Txn, onDone: () -> Unit) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { repo.deleteTxn(txn) }
+            onDone()
+        }
+    }
+
+    // ---------- Voice ----------
+
+    suspend fun parseVoice(text: String): List<VoiceDraft> = withContext(Dispatchers.Default) {
+        val keywords = repo.keywords().map { KeywordEntry(it.phrase, it.categoryId, it.subcategoryId, it.weight) }
+        val subs = subcategories.value
+        val family: (Long) -> Long? = { catId ->
+            subs.firstOrNull { it.categoryId == catId && it.name.contains("Family") }?.id
+        }
+        VoiceParser.parse(text, keywords, family, LocalDate.now()).mapIndexed { i, p -> p.toDraft(i) }
+    }
+
+    private fun ParsedEntry.toDraft(key: Int) = VoiceDraft(
+        key = key,
+        amountText = amountPaise?.let { com.kye.app.domain.Money.plain(it) } ?: "",
+        categoryId = categoryId,
+        subcategoryId = subcategoryId,
+        date = date,
+        paymentMode = paymentMode ?: PaymentMode.UPI,
+        note = note,
+        parsedCategoryId = categoryId,
+        parsedSubcategoryId = subcategoryId,
+        matchedPhrase = matchedPhrase,
+        raw = raw
+    )
+
+    /** Saves confirmed voice drafts and learns from any category corrections. Returns the count saved. */
+    fun saveVoice(drafts: List<VoiceDraft>, onDone: (Int, String?) -> Unit) {
+        viewModelScope.launch {
+            var saved = 0
+            val messages = ArrayList<String>()
+            withContext(Dispatchers.IO) {
+                for (d in drafts) {
+                    val paise = com.kye.app.domain.Money.parseToPaise(d.amountText) ?: continue
+                    if (paise <= 0) continue
+                    val time = if (d.date == LocalDate.now()) LocalTime.now() else LocalTime.of(12, 0)
+                    val txn = Txn(
+                        amountPaise = paise,
+                        type = typeFor(d.categoryId, d.subcategoryId),
+                        categoryId = d.categoryId,
+                        subcategoryId = d.subcategoryId,
+                        dateTime = Dates.atMillis(d.date, time),
+                        paymentMode = d.paymentMode,
+                        note = d.note,
+                        source = Source.VOICE,
+                        rawVoiceText = d.raw
+                    )
+                    val name = d.categoryId?.let { categoryMap.value[it]?.name }
+                    repo.saveWithBudgetCheck(txn, name)?.let { messages += it }
+                    saved++
+
+                    val changed = d.categoryId != d.parsedCategoryId || d.subcategoryId != d.parsedSubcategoryId
+                    if (changed && d.categoryId != null) {
+                        val phrase = d.matchedPhrase
+                            ?: d.note.split(' ').firstOrNull { it.length >= 3 }
+                        if (phrase != null) repo.learn(phrase, d.categoryId, d.subcategoryId)
+                    }
+                }
+            }
+            onDone(saved, messages.distinct().joinToString("\n").ifBlank { null })
+        }
+    }
+
+    // ---------- Recurring ----------
+
+    suspend fun loadRule(id: Long): RecurringRule? = withContext(Dispatchers.IO) { repo.getRule(id) }
+
+    fun saveRule(rule: RecurringRule, onDone: () -> Unit) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                repo.saveRule(rule)
+                kyeApp.runRecurringNow()
+            }
+            onDone()
+        }
+    }
+
+    fun deleteRule(rule: RecurringRule, onDone: () -> Unit) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { repo.deleteRule(rule) }
+            onDone()
+        }
+    }
+
+    fun markPaid(rule: RecurringRule, amount: Long) {
+        viewModelScope.launch(Dispatchers.IO) { repo.markRulePaid(rule, amount) }
+    }
+
+    fun skip(rule: RecurringRule) {
+        viewModelScope.launch(Dispatchers.IO) { repo.skipRule(rule) }
+    }
+
+    /** Builds a rule whose first due date is the first occurrence on/after today (no back-filling). */
+    fun newRule(
+        base: RecurringRule?,
+        name: String,
+        amount: Long,
+        categoryId: Long?,
+        subcategoryId: Long?,
+        payment: PaymentMode,
+        unit: RepeatUnit,
+        interval: Int,
+        start: LocalDate,
+        mode: RecurringMode,
+        remindDaysBefore: Int,
+        active: Boolean
+    ): RecurringRule {
+        val today = LocalDate.now()
+        val scheduleChanged = base == null || base.unit != unit || base.interval != interval ||
+            base.anchorDate != start.toEpochDay()
+        val index = if (scheduleChanged) Recurrence.firstIndexOnOrAfter(start, unit, interval, today)
+        else base!!.occurrenceIndex
+        val next = Recurrence.occurrence(start, unit, interval, index)
+        return RecurringRule(
+            id = base?.id ?: 0,
+            name = name,
+            amountPaise = amount,
+            type = typeFor(categoryId, subcategoryId),
+            categoryId = categoryId,
+            subcategoryId = subcategoryId,
+            paymentMode = payment,
+            unit = unit,
+            interval = interval,
+            anchorDate = start.toEpochDay(),
+            occurrenceIndex = index,
+            nextDueDate = next.toEpochDay(),
+            mode = mode,
+            remindDaysBefore = remindDaysBefore,
+            isActive = active,
+            lastRemindedFor = if (scheduleChanged) null else base?.lastRemindedFor
+        )
+    }
+
+    /** "Make this recurring" from the add screen: this entry is occurrence 0, the rule starts at the next one. */
+    fun ruleFromTxn(txn: Txn, name: String, unit: RepeatUnit, interval: Int) {
+        val start = Dates.toLocalDate(txn.dateTime)
+        val next = Recurrence.occurrence(start, unit, interval, 1)
+        val rule = RecurringRule(
+            name = name,
+            amountPaise = txn.amountPaise,
+            type = txn.type,
+            categoryId = txn.categoryId,
+            subcategoryId = txn.subcategoryId,
+            paymentMode = txn.paymentMode,
+            unit = unit,
+            interval = interval,
+            anchorDate = start.toEpochDay(),
+            occurrenceIndex = 1,
+            nextDueDate = next.toEpochDay(),
+            mode = RecurringMode.AUTO_ADD
+        )
+        viewModelScope.launch(Dispatchers.IO) { repo.saveRule(rule) }
+    }
+
+    // ---------- Budgets & export ----------
+
+    fun setBudget(categoryId: Long, limit: Long?) {
+        viewModelScope.launch(Dispatchers.IO) { repo.setBudget(categoryId, limit) }
+    }
+
+    fun exportCsv(uri: Uri, onDone: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use { repo.exportCsv(it) }
+                        ?: error("no stream")
+                }.isSuccess
+            }
+            onDone(ok)
+        }
+    }
+}
