@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.kye.app.domain.BackupFrequency
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -16,7 +18,19 @@ data class Settings(
     val theme: String = "system",      // system | light | dark
     val voiceLang: String = "en-IN",   // en-IN | ta-IN
     val askedNotifications: Boolean = false,
-    val voiceEnabled: Boolean = true
+    val voiceEnabled: Boolean = true,
+    val backup: BackupSettings = BackupSettings()
+)
+
+data class BackupSettings(
+    val frequency: BackupFrequency = BackupFrequency.OFF,
+    /** Folder picked by the user (a SAF tree URI); automatic backups are saved there. */
+    val folderUri: String? = null,
+    /** Time of the last successful backup, automatic or manual. */
+    val lastAt: Long? = null,
+    val lastWasAuto: Boolean = false,
+    /** Why the last automatic backup failed; cleared by the next success. */
+    val error: String? = null
 )
 
 class Prefs(context: Context) {
@@ -26,15 +40,29 @@ class Prefs(context: Context) {
     private val asked = booleanPreferencesKey("asked_notif")
     private val seed = intPreferencesKey("seed_version")
     private val voiceOn = booleanPreferencesKey("voice_enabled")
+    private val backupFreq = stringPreferencesKey("backup_frequency")
+    private val backupFolder = stringPreferencesKey("backup_folder")
+    private val backupLastAt = longPreferencesKey("backup_last_at")
+    private val backupLastAuto = booleanPreferencesKey("backup_last_auto")
+    private val backupError = stringPreferencesKey("backup_error")
 
     val settings: Flow<Settings> = appContext.dataStore.data.map {
         Settings(
             theme = it[theme] ?: "system",
             voiceLang = it[voice] ?: "en-IN",
             askedNotifications = it[asked] ?: false,
-            voiceEnabled = it[voiceOn] ?: true
+            voiceEnabled = it[voiceOn] ?: true,
+            backup = BackupSettings(
+                frequency = BackupFrequency.entries.firstOrNull { f -> f.name == it[backupFreq] } ?: BackupFrequency.OFF,
+                folderUri = it[backupFolder],
+                lastAt = it[backupLastAt],
+                lastWasAuto = it[backupLastAuto] ?: false,
+                error = it[backupError]
+            )
         )
     }
+
+    suspend fun backupSettings(): BackupSettings = settings.first().backup
 
     suspend fun setTheme(value: String) {
         appContext.dataStore.edit { it[theme] = value }
@@ -50,6 +78,29 @@ class Prefs(context: Context) {
 
     suspend fun setAskedNotifications() {
         appContext.dataStore.edit { it[asked] = true }
+    }
+
+    suspend fun setBackupFrequency(value: BackupFrequency) {
+        appContext.dataStore.edit { it[backupFreq] = value.name }
+    }
+
+    suspend fun setBackupFolder(uri: String) {
+        appContext.dataStore.edit {
+            it[backupFolder] = uri
+            it.remove(backupError)
+        }
+    }
+
+    suspend fun recordBackup(at: Long, auto: Boolean) {
+        appContext.dataStore.edit {
+            it[backupLastAt] = at
+            it[backupLastAuto] = auto
+            if (auto) it.remove(backupError)
+        }
+    }
+
+    suspend fun recordBackupError(message: String) {
+        appContext.dataStore.edit { it[backupError] = message }
     }
 
     /** Which built-in category set this phone has received. 0 = never recorded. */

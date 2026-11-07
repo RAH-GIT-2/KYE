@@ -66,7 +66,18 @@ import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.components.CategoryAvatar
 import com.kye.app.ui.components.ChoiceChip
 import com.kye.app.ui.components.ProgressBar
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.LaunchedEffect
+import com.kye.app.data.BackupSettings
+import com.kye.app.domain.BackupFrequency
+import com.kye.app.domain.BackupSchedule
+import com.kye.app.domain.Dates
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, onCategories: () -> Unit, onImport: () -> Unit) {
@@ -139,7 +150,8 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
             }
             ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
             ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
-            ActionRow(Icons.Rounded.Backup, "Back up everything", "Entries, categories, keywords, bills and budgets in one file. Save it to Drive.") {
+            AutoBackupCard(vm)
+            ActionRow(Icons.Rounded.Backup, "Back up to a file now", "Pick where to save one backup file, e.g. Google Drive. Restore reads these files.") {
                 backup.launch("KYE-backup-${LocalDate.now()}.json")
             }
             ActionRow(Icons.Rounded.Restore, "Restore from backup", "Replaces everything on this phone with the backup") {
@@ -172,6 +184,96 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
             },
             dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("Cancel") } }
         )
+    }
+}
+
+private val BACKUP_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a", Locale.ENGLISH)
+
+@Composable
+private fun AutoBackupCard(vm: KyeViewModel) {
+    val context = LocalContext.current
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val b = settings?.backup ?: BackupSettings()
+    val toast: (String) -> Unit = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+    var busy by remember { mutableStateOf(false) }
+    var folderName by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(b.folderUri) { folderName = vm.backupFolderName(b.folderUri) }
+
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            busy = true
+            vm.setBackupFolder(uri) {
+                busy = false
+                toast(it)
+            }
+        }
+    }
+
+    SettingsCard("Automatic backup") {
+        // Last backup, the thing people most want to know.
+        val last = b.lastAt?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(BACKUP_TIME) }
+        Text(
+            if (last != null) "Last backup: $last · ${if (b.lastWasAuto) "automatic" else "saved by you"}"
+            else "Never backed up",
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (last == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        )
+        val next = BackupSchedule.nextDue(b.frequency, b.lastAt?.let { Dates.toLocalDate(it) }, LocalDate.now())
+        if (next != null && b.folderUri != null) {
+            Text(
+                "Next: " + Dates.label(maxOf(next, LocalDate.now())),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        b.error?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("How often", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BackupFrequency.entries.forEach { f ->
+                ChoiceChip(f.label, b.frequency == f, {
+                    if (f != BackupFrequency.OFF && b.folderUri == null) {
+                        toast("Choose a folder for the backups first")
+                        folderPicker.launch(null)
+                    } else vm.setBackupFrequency(f)
+                })
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("Saved in", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                folderName ?: if (b.folderUri != null) "Chosen folder" else "No folder yet",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = { folderPicker.launch(null) }, enabled = !busy) {
+                Text(if (b.folderUri == null) "Choose folder" else "Change")
+            }
+        }
+        Text(
+            "Keeps the last ${BackupSchedule.KEEP} automatic backups there. Pick a folder outside KYE (e.g. Documents) " +
+                "so backups survive uninstalling. For a copy off the phone, use \"Back up to a file now\" and save to Drive.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        if (b.folderUri != null) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = {
+                busy = true
+                vm.backUpNow {
+                    busy = false
+                    toast(it)
+                }
+            }, enabled = !busy) { Text(if (busy) "Backing up…" else "Back up now") }
+        }
     }
 }
 

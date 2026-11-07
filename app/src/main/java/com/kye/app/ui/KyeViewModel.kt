@@ -26,6 +26,8 @@ import com.kye.app.data.Txn
 import com.kye.app.data.TxnRow
 import com.kye.app.data.TxnType
 import com.kye.app.domain.AnalyticsState
+import com.kye.app.domain.BackupFrequency
+import com.kye.app.work.AutoBackup
 import com.kye.app.domain.CsvImport
 import com.kye.app.domain.ImportProblem
 import com.kye.app.domain.ImportRow
@@ -365,11 +367,59 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching {
                     getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use { repo.exportBackup(it) }
                         ?: error("no stream")
+                    prefs.recordBackup(System.currentTimeMillis(), auto = false)
                 }.isSuccess
             }
             onDone(if (ok) "Backup saved" else "Backup failed")
         }
     }
+
+    // ---------- Automatic backup ----------
+
+    /** Keeps access to the picked folder across restarts, then saves a first backup there. */
+    fun setBackupFolder(uri: Uri, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                val app = getApplication<Application>()
+                try {
+                    app.contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    prefs.setBackupFolder(uri.toString())
+                    if (prefs.backupSettings().frequency == BackupFrequency.OFF) prefs.setBackupFrequency(BackupFrequency.WEEKLY)
+                    describe(AutoBackup.runIfDue(app, force = true))
+                } catch (e: Exception) {
+                    "Couldn't use that folder. Pick another one."
+                }
+            }
+            onDone(msg)
+        }
+    }
+
+    fun setBackupFrequency(frequency: BackupFrequency) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.setBackupFrequency(frequency)
+            // Turning it on backs up straight away if one is due (e.g. never backed up).
+            if (frequency != BackupFrequency.OFF) AutoBackup.runIfDue(getApplication())
+        }
+    }
+
+    fun backUpNow(onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val msg = withContext(Dispatchers.IO) { describe(AutoBackup.runIfDue(getApplication(), force = true)) }
+            onDone(msg)
+        }
+    }
+
+    private fun describe(o: AutoBackup.Outcome) = when (o) {
+        is AutoBackup.Outcome.Saved -> "Backup saved: ${o.fileName}"
+        is AutoBackup.Outcome.Failed -> o.message
+        AutoBackup.Outcome.NotDue -> "Already backed up"
+    }
+
+    suspend fun backupFolderName(folder: String?): String? =
+        withContext(Dispatchers.IO) { AutoBackup.folderName(getApplication(), folder) }
 
     fun importBackup(uri: Uri, onDone: (String) -> Unit) {
         viewModelScope.launch {

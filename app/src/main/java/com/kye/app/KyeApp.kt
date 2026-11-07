@@ -6,6 +6,7 @@ import com.kye.app.data.KyeDatabase
 import com.kye.app.data.Prefs
 import com.kye.app.data.Repository
 import com.kye.app.work.Notifier
+import com.kye.app.work.AutoBackup
 import com.kye.app.work.RecurringWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,9 +30,12 @@ class KyeApp : Application() {
         container = AppContainer(this)
         Notifier.createChannels(this)
         RecurringWorker.schedule(this)
+        AutoBackup.schedule(this)
         container.scope.launch {
             container.repo.ensureSeeded()
             runRecurringNow()
+            // Also on every app open, in case the phone delayed the background job.
+            AutoBackup.runIfDue(this@KyeApp)
         }
     }
 
