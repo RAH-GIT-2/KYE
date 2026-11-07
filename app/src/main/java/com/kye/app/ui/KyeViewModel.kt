@@ -11,8 +11,6 @@ import com.kye.app.KyeApp
 import com.kye.app.data.Category
 import com.kye.app.data.CategoryKind
 import com.kye.app.data.KeywordRule
-import com.kye.app.data.PendingStatus
-import com.kye.app.data.PendingTxn
 import com.kye.app.data.UserError
 import com.kye.app.data.PaymentMode
 import com.kye.app.data.RecurringMode
@@ -84,9 +82,6 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val keywordRules: StateFlow<List<KeywordRule>> = repo.keywordRules
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    val pending: StateFlow<List<PendingTxn>> = repo.pending
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Includes hidden categories, so old entries and stats still show their real name. */
@@ -446,16 +441,4 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         change(onError, onDone) { repo.addKeyword(phrase, categoryId, subcategoryId) }
 
     fun deleteKeyword(id: Long, onError: (String) -> Unit) = change(onError) { repo.deleteKeyword(id) }
-
-    // ---------- Detected payments ----------
-
-    /** Best category guess for a merchant name, using the same keywords as voice entry. */
-    suspend fun guessCategory(text: String): Pair<Long?, Long?> {
-        val d = parseVoice(text).firstOrNull() ?: return null to null
-        return d.categoryId to d.subcategoryId
-    }
-
-    fun resolvePending(id: Long, status: PendingStatus) {
-        viewModelScope.launch(Dispatchers.IO) { repo.setPendingStatus(id, status) }
-    }
 }

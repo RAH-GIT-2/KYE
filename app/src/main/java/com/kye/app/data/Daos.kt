@@ -3,7 +3,6 @@ package com.kye.app.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
@@ -204,26 +203,6 @@ interface KeywordDao {
     suspend fun deleteForCategory(categoryId: Long)
 }
 
-@Dao
-interface PendingDao {
-    @Query("SELECT * FROM pending_txn WHERE status = 'NEW' ORDER BY postedAt DESC")
-    fun observeNew(): Flow<List<PendingTxn>>
-
-    /** Ignored when the fingerprint was already seen, so repeats never come back. */
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insert(p: PendingTxn): Long
-
-    /** The UPI app and the bank SMS for one payment arrive within moments of each other. */
-    @Query("SELECT COUNT(*) FROM pending_txn WHERE amountPaise = :amount AND isCredit = :isCredit AND postedAt BETWEEN :from AND :to")
-    suspend fun countNear(amount: Long, isCredit: Boolean, from: Long, to: Long): Int
-
-    @Query("UPDATE pending_txn SET status = :status WHERE id = :id")
-    suspend fun setStatus(id: Long, status: PendingStatus)
-
-    @Query("DELETE FROM pending_txn WHERE postedAt < :before AND status != 'NEW'")
-    suspend fun prune(before: Long)
-}
-
 /** Raw table access for JSON backup and restore. */
 @Dao
 interface BackupDao {
@@ -247,5 +226,4 @@ interface BackupDao {
     @Query("DELETE FROM keyword_rule") suspend fun clearKeywords()
     @Query("DELETE FROM subcategory") suspend fun clearSubcategories()
     @Query("DELETE FROM category") suspend fun clearCategories()
-    @Query("DELETE FROM pending_txn") suspend fun clearPending()
 }

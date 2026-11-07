@@ -2,15 +2,11 @@
 
 package com.kye.app.ui.screens
 
-import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.kye.app.BuildConfig
-import com.kye.app.work.PaymentListener
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -33,7 +29,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.FileDownload
-import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material3.AlertDialog
@@ -91,12 +86,6 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
     val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         restoreUri = uri
     }
-    var listenerOn by remember { mutableStateOf(false) }
-    LifecycleResumeEffect(Unit) {
-        // Re-check when coming back from the system settings screen.
-        listenerOn = PaymentListener.isEnabled(context)
-        onPauseOrDispose { }
-    }
 
     Scaffold(
         topBar = {
@@ -149,15 +138,6 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
             }
             ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
             ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
-            ActionRow(
-                Icons.Rounded.NotificationsActive,
-                "Read UPI payment notifications",
-                if (listenerOn) "On · payments from GPay, PhonePe, Paytm and bank SMS show up on Home for you to confirm"
-                else "Off · tap to allow. Nothing is added without your OK, and nothing leaves the phone. " +
-                    "If KYE is greyed out there: App info → ⋮ → Allow restricted settings, then try again."
-            ) {
-                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            }
             ActionRow(Icons.Rounded.Backup, "Back up everything", "Entries, categories, keywords, bills and budgets in one file. Save it to Drive.") {
                 backup.launch("KYE-backup-${LocalDate.now()}.json")
             }

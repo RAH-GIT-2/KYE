@@ -19,10 +19,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Txn::class,
         RecurringRule::class,
         Budget::class,
-        KeywordRule::class,
-        PendingTxn::class
+        KeywordRule::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class KyeDatabase : RoomDatabase() {
@@ -31,11 +30,10 @@ abstract class KyeDatabase : RoomDatabase() {
     abstract fun recurringDao(): RecurringDao
     abstract fun budgetDao(): BudgetDao
     abstract fun keywordDao(): KeywordDao
-    abstract fun pendingDao(): PendingDao
     abstract fun backupDao(): BackupDao
 
     companion object {
-        /** v2: "Others" subcategories get an explicit flag; detected-payment inbox table. */
+        /** v2: "Others" subcategories get an explicit flag; a detected-payment table (dropped again in v3). Shipped, so never edit. */
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `subcategory` ADD COLUMN `isDefault` INTEGER NOT NULL DEFAULT 0")
@@ -52,9 +50,17 @@ abstract class KyeDatabase : RoomDatabase() {
             }
         }
 
+        /** v3: notification reading was removed; drop its table and everything it stored. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP INDEX IF EXISTS `index_pending_txn_fingerprint`")
+                db.execSQL("DROP TABLE IF EXISTS `pending_txn`")
+            }
+        }
+
         fun build(context: Context): KyeDatabase =
             Room.databaseBuilder(context, KyeDatabase::class.java, "kye.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

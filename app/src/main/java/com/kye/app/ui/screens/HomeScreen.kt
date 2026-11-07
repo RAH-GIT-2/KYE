@@ -32,7 +32,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kye.app.data.PendingStatus
 import com.kye.app.domain.Dates
 import com.kye.app.domain.HomeState
 import com.kye.app.domain.Money
@@ -54,11 +53,9 @@ fun HomeScreen(
     onSeeAll: () -> Unit,
     onSettings: () -> Unit,
     onBudgets: () -> Unit,
-    onRecurring: () -> Unit,
-    onAddPending: (Long) -> Unit
+    onRecurring: () -> Unit
 ) {
     val s by vm.home.collectAsStateWithLifecycle()
-    val pending by vm.pending.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val today = LocalDate.now()
 
@@ -84,45 +81,6 @@ fun HomeScreen(
         }
 
         item(key = "hero") { HeroCard(s, today, onBudgets) }
-
-        if (pending.isNotEmpty()) {
-            item(key = "pending") {
-                SectionCard(
-                    title = "Detected payments",
-                    subtitle = "From your UPI and bank notifications · tap Add to confirm"
-                ) {
-                    pending.take(5).forEach { p ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    (if (p.isCredit) "+" else "") + Money.format(p.amountPaise, showPaise = true) +
-                                        "  " + p.merchant.ifBlank { if (p.isCredit) "Received" else "Paid" },
-                                    style = MaterialTheme.typography.titleSmall,
-                                    maxLines = 1
-                                )
-                                Text(
-                                    "${p.sourceApp} · ${Dates.label(Dates.toLocalDate(p.postedAt), today)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            TextButton(onClick = { vm.resolvePending(p.id, PendingStatus.DISMISSED) }) { Text("Ignore") }
-                            TextButton(onClick = { onAddPending(p.id) }) { Text("Add") }
-                        }
-                    }
-                    if (pending.size > 5) {
-                        Text(
-                            "+${pending.size - 5} more",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
 
         if (s.upcoming.isNotEmpty()) {
             item(key = "upcoming") {

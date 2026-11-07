@@ -120,23 +120,6 @@ data class KeywordRule(
     val isUserLearned: Boolean = false
 )
 
-enum class PendingStatus { NEW, ADDED, DISMISSED }
-
-/** A payment read from a UPI / bank notification, waiting for the user to confirm it. */
-@Entity(tableName = "pending_txn", indices = [Index(value = ["fingerprint"], unique = true)])
-data class PendingTxn(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val amountPaise: Long,
-    val isCredit: Boolean,
-    val merchant: String,
-    val sourceApp: String,
-    val text: String,
-    val postedAt: Long,
-    /** Same payment seen twice (app + bank SMS, or an updated notification) is stored once. */
-    val fingerprint: String,
-    val status: PendingStatus = PendingStatus.NEW
-)
-
 /** A transaction joined with its category and subcategory for display. */
 data class TxnRow(
     @Embedded val txn: Txn,

@@ -197,8 +197,7 @@ private fun KyeRoot(vm: KyeViewModel) {
                     onSeeAll = { nav.goTab("history") },
                     onSettings = { nav.navigate("settings") },
                     onBudgets = { nav.navigate("budgets") },
-                    onRecurring = { nav.goTab("recurring") },
-                    onAddPending = { nav.navigate("add?pending=$it") }
+                    onRecurring = { nav.goTab("recurring") }
                 )
             }
             composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
@@ -207,16 +206,12 @@ private fun KyeRoot(vm: KyeViewModel) {
                 RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") }, onNewRule = { nav.navigate("rule") })
             }
             composable(
-                "add?id={id}&pending={pending}",
-                arguments = listOf(
-                    navArgument("id") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("pending") { type = NavType.LongType; defaultValue = -1L }
-                )
+                "add?id={id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })
             ) { e ->
                 AddEditScreen(
                     vm,
                     txnId = e.arguments?.getLong("id") ?: -1L,
-                    pendingId = e.arguments?.getLong("pending") ?: -1L,
                     onManageCategories = { nav.navigate("categories") }
                 ) { nav.popBackStack() }
             }

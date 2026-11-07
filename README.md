@@ -37,13 +37,11 @@ Without that file the release build falls back to the debug key, so it still bui
 - **Budgets**: an overall budget and per-category budgets, with alerts at 80% and 100%.
 - **CSV export**, light/dark theme, Indian number formatting (₹1,25,000).
 
-## New in v1.1
+## New in v1.1 – v1.2
 - **Category manager** (Settings → Categories, or "Add / edit" on the add screen): add expense, income or saving categories with your own icon and colour; add, rename, hide, merge or delete subcategories; reorder; manage the voice keywords for each. Hiding keeps old entries intact. A category that's in use can't be deleted outright, only hidden or merged (entries, subcategories, recurring bills, budget and keywords all move over). Every category keeps a catch-all "Others".
 - **Income**: Salary, Business & Freelance, Interest & Returns, Refunds & Cashback, Gifts Received. Home shows income and what's left; Insights shows income, left over and % kept. Existing installs get these categories on upgrade.
 - **Backup & restore** (Settings): one JSON file with everything. Restore replaces the phone's data after a confirmation; a wrong or damaged file is refused before anything changes.
-- **UPI / bank notification reading** (Settings → Read UPI payment notifications): payments from GPay, PhonePe, Paytm, BHIM, CRED, Amazon Pay and bank SMS appear under *Detected payments* on Home. Tap **Add** to open a prefilled entry with a category guess, or **Ignore**. Nothing is added automatically, the same payment from the app and the bank SMS shows once, and only those apps' notifications are read.
-  - On Android 13+, for an APK installed outside the Play Store, Android blocks this permission at first. Go to **App info → ⋮ → Allow restricted settings**, then turn it on.
-
+- **No notification access**: v1.2 removed notification reading entirely. Upgrading drops the stored detected payments, and Android revokes the permission automatically.
 - **Lighter buttons**: the mic is standard size and only on Home, with a small + above it. History has a single +, and Insights has none. Settings → Voice entry turns the mic off entirely, and it hides itself on phones without speech recognition.
 - **Quick type** on the + screen: type `swiggy 450 biryani` in one line and the form fills itself, using the same parser as voice.
 

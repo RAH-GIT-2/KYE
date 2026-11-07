@@ -70,7 +70,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kye.app.data.CategoryKind
 import com.kye.app.data.PaymentMode
-import com.kye.app.data.PendingStatus
 import com.kye.app.data.RepeatUnit
 import com.kye.app.data.Source
 import com.kye.app.data.Txn
@@ -87,7 +86,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 @Composable
-fun AddEditScreen(vm: KyeViewModel, txnId: Long, pendingId: Long = -1L, onManageCategories: () -> Unit = {}, onBack: () -> Unit) {
+fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit = {}, onBack: () -> Unit) {
     val context = LocalContext.current
     val categories by vm.categories.collectAsStateWithLifecycle()
     val allCategories by vm.allCategories.collectAsStateWithLifecycle()
@@ -150,21 +149,6 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, pendingId: Long = -1L, onManage
                 payment = t.paymentMode
                 note = t.note
             }
-        } else if (pendingId > 0) {
-            // Prefill from a payment read off a UPI / bank notification.
-            vm.pending.value.firstOrNull { it.id == pendingId }?.let { p ->
-                amount = Money.plain(p.amountPaise)
-                type = if (p.isCredit) TxnType.INCOME else TxnType.EXPENSE
-                date = Dates.toLocalDate(p.postedAt)
-                payment = PaymentMode.UPI
-                note = p.merchant
-                val (c, s) = vm.guessCategory(p.merchant)
-                val guessedKind = c?.let { id -> categories.firstOrNull { it.id == id }?.kind }
-                if (guessedKind == kindOf(type)) {
-                    catId = c
-                    subId = s
-                }
-            }
         } else {
             runCatching { focus.requestFocus() }
         }
@@ -200,7 +184,6 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, pendingId: Long = -1L, onManage
             note = note.trim()
         )
         vm.saveTxn(txn) { msg ->
-            if (pendingId > 0) vm.resolvePending(pendingId, PendingStatus.ADDED)
             if (repeat && old == null) {
                 val name = note.trim().ifBlank {
                     allSubs.firstOrNull { it.id == subId }?.takeIf { !it.isDefault }?.name
@@ -249,7 +232,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, pendingId: Long = -1L, onManage
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            if (txnId <= 0 && pendingId <= 0) {
+            if (txnId <= 0) {
                 OutlinedTextField(
                     value = quick,
                     onValueChange = { quick = it },

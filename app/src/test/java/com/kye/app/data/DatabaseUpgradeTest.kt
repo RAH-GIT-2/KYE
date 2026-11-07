@@ -56,12 +56,12 @@ class DatabaseUpgradeTest {
     }
 
     @Test
-    fun upgradeFromV1KeepsEverything() = runBlocking {
+    fun upgradeFromV1ToLatestKeepsEverything() = runBlocking {
         val name = "upgrade-test.db"
         createV1(name)
 
         val db = Room.databaseBuilder(context, KyeDatabase::class.java, name)
-            .addMigrations(KyeDatabase.MIGRATION_1_2)
+            .addMigrations(KyeDatabase.MIGRATION_1_2, KyeDatabase.MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
 
@@ -78,9 +78,13 @@ class DatabaseUpgradeTest {
         assertFalse(subs.first { it.name == "Swiggy" }.isDefault)
         assertEquals(500000L, db.budgetDao().all().single().monthlyLimitPaise)
 
-        // The new table works.
-        db.pendingDao().insert(PendingTxn(amountPaise = 100, isCredit = false, merchant = "X", sourceApp = "GPay", text = "", postedAt = 1, fingerprint = "f"))
-        assertEquals(1, db.pendingDao().observeNew().first().size)
+        // v2 created the detected-payments table; v3 removed it again.
+        db.openHelper.readableDatabase
+            .query("SELECT COUNT(*) FROM sqlite_master WHERE name LIKE '%pending_txn%'")
+            .use { c ->
+                c.moveToFirst()
+                assertEquals(0, c.getInt(0))
+            }
         db.close()
     }
 

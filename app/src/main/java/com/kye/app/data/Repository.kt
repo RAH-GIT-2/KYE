@@ -21,11 +21,9 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
     private val recurringDao = db.recurringDao()
     private val budgetDao = db.budgetDao()
     private val keywordDao = db.keywordDao()
-    private val pendingDao = db.pendingDao()
     private val backupDao = db.backupDao()
     private val recurringLock = Mutex()
     private val seedLock = Mutex()
-    private val pendingLock = Mutex()
 
     val categories: Flow<List<Category>> = categoryDao.observeAll()
     val allCategories: Flow<List<Category>> = categoryDao.observeEverything()
@@ -35,7 +33,6 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
     val rules: Flow<List<RecurringRule>> = recurringDao.observeAll()
     val budgets: Flow<List<Budget>> = budgetDao.observeAll()
     val transactions: Flow<List<TxnRow>> = txnDao.observeAll()
-    val pending: Flow<List<PendingTxn>> = pendingDao.observeNew()
 
     @Volatile
     private var keywordCache: List<KeywordRule>? = null
@@ -477,18 +474,6 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
     private fun csv(value: String): String =
         if (value.any { it == ',' || it == '"' || it == '\n' }) "\"" + value.replace("\"", "\"\"") + "\"" else value
 
-    // ---------- Detected payments (UPI / bank notifications) ----------
-
-    /** Returns true if this payment is new (not the same notification again, nor its bank-SMS twin). */
-    suspend fun addPending(p: PendingTxn): Boolean = pendingLock.withLock {
-        pendingDao.prune(System.currentTimeMillis() - 60L * 24 * 60 * 60 * 1000)
-        val window = 3 * 60 * 1000L
-        if (pendingDao.countNear(p.amountPaise, p.isCredit, p.postedAt - window, p.postedAt + window) > 0) return@withLock false
-        pendingDao.insert(p) > 0
-    }
-
-    suspend fun setPendingStatus(id: Long, status: PendingStatus) = pendingDao.setStatus(id, status)
-
     // ---------- Backup & restore ----------
 
     suspend fun exportBackup(out: OutputStream) {
@@ -515,7 +500,6 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
             backupDao.clearRules()
             backupDao.clearBudgets()
             backupDao.clearKeywords()
-            backupDao.clearPending()
             backupDao.clearSubcategories()
             backupDao.clearCategories()
             backupDao.insertCategories(data.categories)
