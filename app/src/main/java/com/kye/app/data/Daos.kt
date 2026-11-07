@@ -16,16 +16,9 @@ const val ROW_SELECT =
 
 @Dao
 interface CategoryDao {
-    /** Visible categories, for pickers. */
-    @Query("SELECT * FROM category WHERE isArchived = 0 ORDER BY sortOrder")
-    fun observeAll(): Flow<List<Category>>
-
     /** Every category including hidden ones, for the manager and for labelling old entries. */
     @Query("SELECT * FROM category ORDER BY isArchived, sortOrder")
     fun observeEverything(): Flow<List<Category>>
-
-    @Query("SELECT * FROM subcategory WHERE isArchived = 0 ORDER BY isDefault, id")
-    fun observeSubs(): Flow<List<Subcategory>>
 
     @Query("SELECT * FROM subcategory ORDER BY isDefault, id")
     fun observeAllSubs(): Flow<List<Subcategory>>

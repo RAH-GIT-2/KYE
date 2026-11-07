@@ -74,17 +74,25 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     val settings: StateFlow<Settings?> = prefs.settings
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val categories: StateFlow<List<Category>> = repo.categories
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    val subcategories: StateFlow<List<Subcategory>> = repo.subcategories
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
     /** Everything, hidden included, for the category manager. */
     val allCategories: StateFlow<List<Category>> = repo.allCategories
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allSubcategories: StateFlow<List<Subcategory>> = repo.allSubcategories
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // The pickers' lists are derived from the full lists above, not queried separately, so the add
+    // screen, voice and Quick type always show exactly what Settings → Categories shows.
+    // (Separate "visible only" queries came back empty on a phone more than once.)
+
+    /** Visible categories, in the user's order, for pickers. */
+    val categories: StateFlow<List<Category>> = allCategories
+        .map { list -> list.filter { !it.isArchived }.sortedBy { it.sortOrder } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Visible subcategories for pickers. "Others" is the catch-all, so it's always there. */
+    val subcategories: StateFlow<List<Subcategory>> = allSubcategories
+        .map { list -> list.filter { !it.isArchived || it.isDefault } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val keywordRules: StateFlow<List<KeywordRule>> = repo.keywordRules

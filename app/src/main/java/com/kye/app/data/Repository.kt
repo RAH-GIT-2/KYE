@@ -26,9 +26,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
     private val recurringLock = Mutex()
     private val seedLock = Mutex()
 
-    val categories: Flow<List<Category>> = categoryDao.observeAll()
     val allCategories: Flow<List<Category>> = categoryDao.observeEverything()
-    val subcategories: Flow<List<Subcategory>> = categoryDao.observeSubs()
     val allSubcategories: Flow<List<Subcategory>> = categoryDao.observeAllSubs()
     val keywordRules: Flow<List<KeywordRule>> = keywordDao.observeAll()
     val rules: Flow<List<RecurringRule>> = recurringDao.observeAll()
