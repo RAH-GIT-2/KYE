@@ -54,6 +54,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -532,7 +533,7 @@ private fun CategoryEditDialog(
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var emoji by remember { mutableStateOf(initial?.emoji ?: EMOJIS.first()) }
-    var color by remember { mutableStateOf(initial?.color ?: PALETTE.first()) }
+    var color by remember { mutableLongStateOf(initial?.color ?: PALETTE.first()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

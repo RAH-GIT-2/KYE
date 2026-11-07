@@ -38,7 +38,7 @@ object CsvImport {
     val HEADER = listOf("Date", "Type", "Amount", "Category", "Subcategory", "Payment", "Note")
 
     /** Excel needs the byte-order mark to open UTF-8 (Tamil notes) correctly. */
-    const val BOM = "﻿"
+    val BOM: String = Char(0xFEFF).toString()
 
     val TEMPLATE: String = BOM + HEADER.joinToString(",") + "\r\n"
 
