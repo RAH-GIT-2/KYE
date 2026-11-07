@@ -1,11 +1,11 @@
 package com.kye.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.SpeechRecognizer
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,9 +19,14 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -30,9 +35,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -44,14 +51,19 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -61,6 +73,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.kye.app.ui.AppLock
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.screens.AddEditScreen
 import com.kye.app.ui.screens.BudgetsScreen
@@ -76,18 +89,91 @@ import com.kye.app.ui.screens.SettingsScreen
 import com.kye.app.ui.screens.VoiceSheet
 import com.kye.app.ui.theme.KyeTheme
 
-class MainActivity : ComponentActivity() {
+/** FragmentActivity because the fingerprint / PIN prompt needs it. */
+class MainActivity : FragmentActivity() {
     private val vm: KyeViewModel by viewModels()
+
+    /** Only matters when app lock is on. Decided in onStart. */
+    private var locked by mutableStateOf(true)
+    private val action = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        action.value = intent?.getStringExtra(EXTRA_ACTION)
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
             KyeTheme(settings?.theme ?: "system") {
-                KyeRoot(vm)
+                val s = settings
+                when {
+                    // Settings not read yet: show nothing rather than flash the data before a lock.
+                    s == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+                    s.appLock && locked -> LockScreen(::unlock)
+                    else -> {
+                        // Lock is off: stay unlocked, so switching it on in Settings doesn't lock straight away.
+                        if (!s.appLock && locked) SideEffect { locked = false }
+                        KyeRoot(vm, action)
+                    }
+                }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_ACTION)?.let { action.value = it }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Settings not loaded yet (fresh start) counts as "maybe locked"; the screen decides once they are.
+        val lockOn = vm.settings.value?.appLock != false
+        if (lockOn && System.currentTimeMillis() - lastSeen > AppLock.RELOCK_AFTER_MS) locked = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Also on rotation, so turning the phone never asks again.
+        if (!locked) lastSeen = System.currentTimeMillis()
+    }
+
+    private fun unlock() {
+        if (!AppLock.isAvailable(this)) {
+            // The phone's screen lock was removed: nothing to check against, so let the user in.
+            locked = false
+            lastSeen = System.currentTimeMillis()
+            return
+        }
+        AppLock.authenticate(this, "Unlock KYE", onSuccess = {
+            locked = false
+            lastSeen = System.currentTimeMillis()
+        })
+    }
+
+    companion object {
+        const val EXTRA_ACTION = "kye.action"
+        const val ACTION_VOICE = "voice"
+        const val ACTION_ADD = "add"
+
+        /** Last time KYE was open and unlocked. Kept for the whole process, across rotations. */
+        private var lastSeen = 0L
+    }
+}
+
+@Composable
+private fun LockScreen(onUnlock: () -> Unit) {
+    LaunchedEffect(Unit) { onUnlock() }
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(16.dp))
+        Text("KYE is locked", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(24.dp))
+        Button(onClick = onUnlock) { Text("Unlock") }
     }
 }
 
@@ -101,7 +187,7 @@ private val tabs = listOf(
 )
 
 @Composable
-private fun KyeRoot(vm: KyeViewModel) {
+private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
@@ -111,6 +197,16 @@ private fun KyeRoot(vm: KyeViewModel) {
     // Hidden when turned off in Settings, or when the phone has no speech recognition at all.
     val speechAvailable = remember { SpeechRecognizer.isRecognitionAvailable(context) }
     val showMic = speechAvailable && (settings?.voiceEnabled ?: true)
+
+    // Opened from the home-screen widget or the quick-settings tile.
+    LaunchedEffect(action.value, settings != null) {
+        if (settings == null) return@LaunchedEffect
+        when (action.value) {
+            MainActivity.ACTION_VOICE -> if (showMic) vm.voiceOpen = true else nav.navigate("add")
+            MainActivity.ACTION_ADD -> nav.navigate("add")
+        }
+        action.value = null
+    }
 
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         vm.markAskedNotifications()

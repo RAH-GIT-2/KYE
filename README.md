@@ -48,6 +48,10 @@ Without that file the release build falls back to the debug key, so it still bui
 - **Category picker**: picking a category folds the list into one line ("🏠 Home & Help · Change") with its subcategories right under it, on the add screen, the recurring bill screen and the voice card. Settings → Voice entry turns the mic off entirely, and it hides itself on phones without speech recognition.
 - **Quick type** on the + screen: type `swiggy 450 biryani` in one line and the form fills itself, using the same parser as voice.
 
+- **App lock** (Settings): fingerprint, face or phone PIN when opening KYE and after a minute in the background. Uses the phone's own screen lock, so there's no separate KYE PIN.
+- **Home-screen widget**: today's and this month's spend with + and mic buttons. Amounts are hidden while app lock is on.
+- **Quick-settings tile** "Speak expense": opens KYE straight to the mic from the pull-down panel.
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

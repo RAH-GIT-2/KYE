@@ -1,3 +1,7 @@
 <resources>
     <color name="kye_bg">#0F0E17</color>
+    <color name="widget_bg">#FF1E1C2A</color>
+    <color name="widget_soft">#2E2B40</color>
+    <color name="widget_text">#F2F0FA</color>
+    <color name="widget_subtext">#A9A5C0</color>
 </resources>

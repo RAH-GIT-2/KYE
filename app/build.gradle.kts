@@ -15,8 +15,8 @@ android {
         applicationId = "com.kye.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 8
+        versionName = "1.7"
     }
 
     // The release key lives outside the repo. keystore.properties is gitignored; without it the
@@ -93,6 +93,8 @@ dependencies {
 
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    // Fingerprint / face / phone-PIN prompt for app lock (brings androidx.fragment for FragmentActivity).
+    implementation("androidx.biometric:biometric:1.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

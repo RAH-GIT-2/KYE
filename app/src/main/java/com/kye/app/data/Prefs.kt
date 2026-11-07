@@ -19,6 +19,8 @@ data class Settings(
     val voiceLang: String = "en-IN",   // en-IN | ta-IN
     val askedNotifications: Boolean = false,
     val voiceEnabled: Boolean = true,
+    /** Fingerprint / face / screen PIN when opening KYE. */
+    val appLock: Boolean = false,
     val backup: BackupSettings = BackupSettings()
 )
 
@@ -40,6 +42,7 @@ class Prefs(context: Context) {
     private val asked = booleanPreferencesKey("asked_notif")
     private val seed = intPreferencesKey("seed_version")
     private val voiceOn = booleanPreferencesKey("voice_enabled")
+    private val lockOn = booleanPreferencesKey("app_lock")
     private val backupFreq = stringPreferencesKey("backup_frequency")
     private val backupFolder = stringPreferencesKey("backup_folder")
     private val backupLastAt = longPreferencesKey("backup_last_at")
@@ -52,6 +55,7 @@ class Prefs(context: Context) {
             voiceLang = it[voice] ?: "en-IN",
             askedNotifications = it[asked] ?: false,
             voiceEnabled = it[voiceOn] ?: true,
+            appLock = it[lockOn] ?: false,
             backup = BackupSettings(
                 frequency = BackupFrequency.entries.firstOrNull { f -> f.name == it[backupFreq] } ?: BackupFrequency.OFF,
                 folderUri = it[backupFolder],
@@ -74,6 +78,10 @@ class Prefs(context: Context) {
 
     suspend fun setVoiceEnabled(value: Boolean) {
         appContext.dataStore.edit { it[voiceOn] = value }
+    }
+
+    suspend fun setAppLock(value: Boolean) {
+        appContext.dataStore.edit { it[lockOn] = value }
     }
 
     suspend fun setAskedNotifications() {

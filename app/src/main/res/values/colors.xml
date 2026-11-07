@@ -1,4 +1,8 @@
 <resources>
     <color name="kye_bg">#F6F5FB</color>
     <color name="ic_launcher_background">#6C5CE7</color>
+    <color name="widget_bg">#FFFFFFFF</color>
+    <color name="widget_soft">#EEEBFB</color>
+    <color name="widget_text">#1B1A24</color>
+    <color name="widget_subtext">#6B6880</color>
 </resources>

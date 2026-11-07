@@ -7,10 +7,14 @@ import com.kye.app.data.Prefs
 import com.kye.app.data.Repository
 import com.kye.app.work.Notifier
 import com.kye.app.work.AutoBackup
+import com.kye.app.work.KyeWidget
 import com.kye.app.work.RecurringWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -36,6 +40,14 @@ class KyeApp : Application() {
             runRecurringNow()
             // Also on every app open, in case the phone delayed the background job.
             AutoBackup.runIfDue(this@KyeApp)
+        }
+        // Keep the home-screen widget in step with entries and the app-lock setting.
+        container.scope.launch {
+            combine(container.repo.transactions, container.prefs.settings) { _, s -> s.appLock }
+                .collectLatest {
+                    delay(300) // several saves in a row (voice, import) → one redraw
+                    if (KyeWidget.hasWidgets(this@KyeApp)) KyeWidget.refresh(this@KyeApp)
+                }
         }
     }
 

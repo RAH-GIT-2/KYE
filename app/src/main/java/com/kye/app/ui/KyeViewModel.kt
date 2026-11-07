@@ -144,6 +144,7 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     fun setTheme(value: String) = viewModelScope.launch { prefs.setTheme(value) }
     fun setVoiceLang(value: String) = viewModelScope.launch { prefs.setVoiceLang(value) }
     fun setVoiceEnabled(value: Boolean) = viewModelScope.launch { prefs.setVoiceEnabled(value) }
+    fun setAppLock(value: Boolean) = viewModelScope.launch { prefs.setAppLock(value) }
     fun markAskedNotifications() = viewModelScope.launch { prefs.setAskedNotifications() }
 
     // ---------- Helpers ----------

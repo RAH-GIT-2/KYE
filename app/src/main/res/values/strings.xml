@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">KYE</string>
+    <string name="widget_description">Today\'s spend, with quick + and mic buttons</string>
+    <string name="tile_label">Speak expense</string>
 </resources>

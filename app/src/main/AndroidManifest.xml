@@ -31,5 +31,30 @@
 
         <receiver
             android:name=".work.ReminderReceiver"
-            android:exported="false" />    </application>
+            android:exported="false" />
+
+        <!-- Home-screen widget -->
+        <receiver
+            android:name=".work.KyeWidget"
+            android:exported="true"
+            android:label="KYE">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_kye_info" />
+        </receiver>
+
+        <!-- Quick-settings tile: "Speak expense" -->
+        <service
+            android:name=".work.VoiceTile"
+            android:exported="true"
+            android:icon="@drawable/ic_widget_mic"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>    </application>
 </manifest>

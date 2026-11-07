@@ -2,8 +2,12 @@
 
 package com.kye.app.ui.screens
 
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import android.widget.Toast
+import androidx.fragment.app.FragmentActivity
+import com.kye.app.ui.AppLock
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.kye.app.BuildConfig
@@ -119,6 +123,34 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
                     }
                 }
             }
+            SettingsCard("App lock") {
+                val lockOn = settings?.appLock ?: false
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Lock KYE", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Asks for your fingerprint, face or phone PIN when you open KYE, and after a minute away. " +
+                                "The home-screen widget hides amounts while this is on.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = lockOn, onCheckedChange = { wanted ->
+                        val activity = context.findActivity()
+                        when {
+                            activity == null -> Unit
+                            !AppLock.isAvailable(context) ->
+                                Toast.makeText(context, "Set a screen lock (PIN, pattern or fingerprint) in your phone's settings first", Toast.LENGTH_LONG).show()
+                            // Confirm it's really you both to switch it on and to switch it off.
+                            else -> AppLock.authenticate(
+                                activity,
+                                if (wanted) "Turn on app lock" else "Turn off app lock",
+                                onSuccess = { vm.setAppLock(wanted) }
+                            )
+                        }
+                    })
+                }
+            }
             SettingsCard("Voice entry") {
                 val voiceOn = settings?.voiceEnabled ?: true
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -185,6 +217,15 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
             dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("Cancel") } }
         )
     }
+}
+
+private fun Context.findActivity(): FragmentActivity? {
+    var c: Context? = this
+    while (c is ContextWrapper) {
+        if (c is FragmentActivity) return c
+        c = c.baseContext
+    }
+    return null
 }
 
 private val BACKUP_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a", Locale.ENGLISH)
