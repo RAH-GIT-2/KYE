@@ -37,7 +37,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -195,6 +199,72 @@ fun CategoryGrid(categories: List<Category>, selectedId: Long?, onSelect: (Categ
                     c.name, style = MaterialTheme.typography.labelLarge,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Category, then subcategory, without the subcategories ending up below a long list.
+ * With no category picked the full list shows. Picking one folds the list into a single
+ * "🏠 Home & Help · Change" line with the subcategory chips right under it.
+ */
+@Composable
+fun CategoryPicker(
+    categories: List<Category>,
+    subcategories: List<Subcategory>,
+    catId: Long?,
+    subId: Long?,
+    onCategory: (Category) -> Unit,
+    onSubcategory: (Subcategory) -> Unit
+) {
+    var expanded by remember { mutableStateOf(catId == null) }
+    // An entry being edited loads its category a moment later: fold the list then too.
+    LaunchedEffect(catId) { if (catId != null) expanded = false }
+    val selected = categories.firstOrNull { it.id == catId }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (expanded || selected == null) {
+            CategoryGrid(categories, catId) { c ->
+                onCategory(c)
+                expanded = false
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(selected.color).copy(alpha = 0.22f))
+                        .clickable { expanded = true }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(selected.emoji, fontSize = 20.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(selected.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { expanded = true }) { Text("Change") }
+            }
+        }
+
+        if (selected != null && !expanded) {
+            val subs = subcategories.filter { it.categoryId == selected.id }
+            Column {
+                Text(
+                    "Subcategory",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                SubcategoryChips(subs, subId, onSubcategory)
+                if (subs.none { !it.isDefault }) {
+                    Text(
+                        "Add subcategories in Settings → Categories",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

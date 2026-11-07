@@ -77,11 +77,10 @@ import com.kye.app.data.TxnType
 import com.kye.app.domain.Dates
 import com.kye.app.domain.Money
 import com.kye.app.ui.KyeViewModel
-import com.kye.app.ui.components.CategoryGrid
+import com.kye.app.ui.components.CategoryPicker
 import com.kye.app.ui.components.ChoiceChip
 import com.kye.app.ui.components.DatePickerSheet
 import com.kye.app.ui.components.PaymentChips
-import com.kye.app.ui.components.SubcategoryChips
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -297,25 +296,23 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                 Box(Modifier.weight(1f)) { Label("Category") }
                 TextButton(onClick = onManageCategories) { Text("Add / edit") }
             }
-            CategoryGrid(visibleCats, catId) { c ->
-                if (catId != c.id) {
-                    catId = c.id
-                    subId = null
-                }
-            }
-
-            AnimatedVisibility(visible = catId != null) {
-                Column {
-                    Label("Subcategory")
-                    Spacer(Modifier.height(8.dp))
-                    val subs = subcategories.filter { it.categoryId == catId } +
-                        allSubs.filter { it.id == subId && it.isArchived }
-                    SubcategoryChips(subs, subId) { s ->
-                        subId = s.id
-                        type = vm.typeFor(catId, s.id, if (type == TxnType.TRANSFER && !s.isTransfer) TxnType.EXPENSE else type)
+            CategoryPicker(
+                categories = visibleCats,
+                // A hidden subcategory an old entry uses stays selectable while editing it.
+                subcategories = subcategories + allSubs.filter { it.id == subId && it.isArchived },
+                catId = catId,
+                subId = subId,
+                onCategory = { c ->
+                    if (catId != c.id) {
+                        catId = c.id
+                        subId = null
                     }
+                },
+                onSubcategory = { s ->
+                    subId = s.id
+                    type = vm.typeFor(catId, s.id, if (type == TxnType.TRANSFER && !s.isTransfer) TxnType.EXPENSE else type)
                 }
-            }
+            )
 
             Row(
                 Modifier

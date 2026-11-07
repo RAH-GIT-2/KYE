@@ -84,11 +84,10 @@ import com.kye.app.domain.UNCATEGORISED_COLOR
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.VoiceDraft
 import com.kye.app.ui.components.CategoryAvatar
-import com.kye.app.ui.components.CategoryGrid
+import com.kye.app.ui.components.CategoryPicker
 import com.kye.app.ui.components.ChoiceChip
 import com.kye.app.ui.components.DatePickerSheet
 import com.kye.app.ui.components.PaymentChips
-import com.kye.app.ui.components.SubcategoryChips
 import com.kye.app.voice.SpeechController
 import kotlinx.coroutines.launch
 
@@ -393,16 +392,19 @@ private fun CategoryDialog(
         title = { Text("Category") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                CategoryGrid(categories, cat) { c ->
-                    if (cat != c.id) {
-                        cat = c.id
-                        sub = null
-                    }
-                }
-                if (cat != null) {
-                    Text("Subcategory", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    SubcategoryChips(subs.filter { it.categoryId == cat }, sub) { sub = it.id }
-                }
+                CategoryPicker(
+                    categories = categories,
+                    subcategories = subs,
+                    catId = cat,
+                    subId = sub,
+                    onCategory = { c ->
+                        if (cat != c.id) {
+                            cat = c.id
+                            sub = null
+                        }
+                    },
+                    onSubcategory = { sub = it.id }
+                )
             }
         },
         confirmButton = {

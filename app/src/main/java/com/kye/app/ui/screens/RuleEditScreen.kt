@@ -62,11 +62,10 @@ import com.kye.app.domain.Dates
 import com.kye.app.domain.Money
 import com.kye.app.domain.Recurrence
 import com.kye.app.ui.KyeViewModel
-import com.kye.app.ui.components.CategoryGrid
+import com.kye.app.ui.components.CategoryPicker
 import com.kye.app.ui.components.ChoiceChip
 import com.kye.app.ui.components.DatePickerSheet
 import com.kye.app.ui.components.PaymentChips
-import com.kye.app.ui.components.SubcategoryChips
 import java.time.LocalDate
 
 @Composable
@@ -208,15 +207,19 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
             }
 
             Label("Category")
-            CategoryGrid(categories, catId) { c ->
-                if (catId != c.id) {
-                    catId = c.id
-                    subId = null
-                }
-            }
-            AnimatedVisibility(catId != null) {
-                SubcategoryChips(subcategories.filter { it.categoryId == catId }, subId) { subId = it.id }
-            }
+            CategoryPicker(
+                categories = categories,
+                subcategories = subcategories,
+                catId = catId,
+                subId = subId,
+                onCategory = { c ->
+                    if (catId != c.id) {
+                        catId = c.id
+                        subId = null
+                    }
+                },
+                onSubcategory = { subId = it.id }
+            )
 
             Label("Paid with")
             PaymentChips(payment) { payment = it }

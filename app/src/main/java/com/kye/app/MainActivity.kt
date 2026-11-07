@@ -149,10 +149,11 @@ private fun KyeRoot(vm: KyeViewModel) {
         },
         floatingActionButton = {
             // Home: mic (standard size) with a small + above it; just + when voice is off.
-            // History: + alone. Insights and Recurring: nothing floating over the content.
+            // History: + adds an entry. Recurring: + adds a bill. Insights: nothing.
             val micHere = route == "home" && showMic
+            val onRecurring = route == "recurring"
             AnimatedVisibility(
-                visible = route == "home" || route == "history",
+                visible = route == "home" || route == "history" || onRecurring,
                 enter = scaleIn(tween(200)) + fadeIn(tween(200)),
                 exit = scaleOut(tween(150)) + fadeOut(tween(150))
             ) {
@@ -172,11 +173,17 @@ private fun KyeRoot(vm: KyeViewModel) {
                         ) { Icon(Icons.Rounded.Mic, contentDescription = "Speak an expense", modifier = Modifier.size(26.dp)) }
                     } else {
                         FloatingActionButton(
-                            onClick = { nav.navigate("add") },
+                            onClick = { nav.navigate(if (onRecurring) "rule" else "add") },
                             shape = RoundedCornerShape(18.dp),
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
-                        ) { Icon(Icons.Rounded.Add, contentDescription = "Add entry", modifier = Modifier.size(28.dp)) }
+                        ) {
+                            Icon(
+                                Icons.Rounded.Add,
+                                contentDescription = if (onRecurring) "Add recurring bill" else "Add entry",
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -204,7 +211,7 @@ private fun KyeRoot(vm: KyeViewModel) {
             composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
             composable("insights") { InsightsScreen(vm) { nav.navigate("budgets") } }
             composable("recurring") {
-                RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") }, onNewRule = { nav.navigate("rule") })
+                RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") })
             }
             composable(
                 "add?id={id}",

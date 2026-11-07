@@ -88,6 +88,19 @@ class DatabaseUpgradeTest {
         db.close()
     }
 
+    /** Add screen and voice entry read the "visible subcategories" list; it must match Settings' full list. */
+    @Test
+    fun visibleSubcategoriesAreReturned() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, KyeDatabase::class.java).allowMainThreadQueries().build()
+        Repository(db, Prefs(context)).ensureSeeded()
+        val home = db.categoryDao().allCategories().first { it.name == "Home & Help" }
+        val all = db.categoryDao().observeAllSubs().first().filter { it.categoryId == home.id }
+        val visible = db.categoryDao().observeSubs().first().filter { it.categoryId == home.id }
+        assertTrue("Rent is visible", visible.any { it.name == "Rent" })
+        assertEquals(all.size, visible.size)
+        db.close()
+    }
+
     @Test
     fun categoryManagerAndBackupRoundTrip() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, KyeDatabase::class.java).allowMainThreadQueries().build()

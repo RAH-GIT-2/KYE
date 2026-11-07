@@ -43,7 +43,8 @@ Without that file the release build falls back to the debug key, so it still bui
 - **CSV import** (Settings → Import from CSV): save the blank template (`Date,Type,Amount,Category,Subcategory,Payment,Note`), fill it in a spreadsheet, upload it. A preview lists rows with problems by row number, skips duplicates (same date, amount and note), and asks what to do with each category KYE doesn't have: create it, use an existing one, or leave it uncategorised. Import only adds, and **Undo this import** removes exactly what it added. CSV export uses the same columns, so you can export, edit and re-import.
 - **Backup & restore** (Settings): one JSON file with everything. Restore replaces the phone's data after a confirmation; a wrong or damaged file is refused before anything changes.
 - **No notification access**: v1.2 removed notification reading entirely. Upgrading drops the stored detected payments, and Android revokes the permission automatically.
-- **Lighter buttons**: the mic is standard size and only on Home, with a small + above it. History has a single +, and Insights has none. Settings → Voice entry turns the mic off entirely, and it hides itself on phones without speech recognition.
+- **Lighter buttons**: the mic is standard size and only on Home, with a small + above it. History and Recurring have a single + at the bottom right, and Insights has none.
+- **Category picker**: picking a category folds the list into one line ("🏠 Home & Help · Change") with its subcategories right under it, on the add screen, the recurring bill screen and the voice card. Settings → Voice entry turns the mic off entirely, and it hides itself on phones without speech recognition.
 - **Quick type** on the + screen: type `swiggy 450 biryani` in one line and the form fills itself, using the same parser as voice.
 
 ## Not yet built

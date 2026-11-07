@@ -19,12 +19,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -56,7 +54,7 @@ import com.kye.app.ui.theme.HeroBrush
 import java.time.LocalDate
 
 @Composable
-fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit, onNewRule: () -> Unit) {
+fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit) {
     val rules by vm.rules.collectAsStateWithLifecycle()
     val cats by vm.categoryMap.collectAsStateWithLifecycle()
     var paying by remember { mutableStateOf<RecurringRule?>(null) }
@@ -65,18 +63,12 @@ fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit, onNewRule: () 
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item(key = "title") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Recurring", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                FilledTonalButton(onClick = onNewRule, shape = RoundedCornerShape(14.dp)) {
-                    Icon(Icons.Rounded.Add, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("New")
-                }
-            }
+            // Adding a bill is the "+" at the bottom right, like on History.
+            Text("Recurring", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(vertical = 8.dp))
         }
         item(key = "summary") {
             Box(
