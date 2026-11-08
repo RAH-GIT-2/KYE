@@ -135,6 +135,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var repeat by remember { mutableStateOf(false) }
     var repeatUnit by remember { mutableStateOf(RepeatUnit.MONTH) }
     var repeatEvery by remember { mutableIntStateOf(1) }
+    var repeatBackfill by remember { mutableStateOf<Pair<Txn, List<com.kye.app.domain.BackfillDate>>?>(null) }
     var showDate by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
@@ -227,6 +228,23 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     val visibleCats = (categories + allCategories.filter { it.id == catId && it.isArchived })
         .filter { it.kind == kind }
 
+    fun commit(txn: Txn, backfill: List<LocalDate>) {
+        val old = existing
+        saved = true
+        vm.saveTxnFull(txn, newPhotos, if (type == TxnType.EXPENSE) warranty else null) { msg ->
+            if (repeat && old == null) {
+                val name = note.trim().ifBlank {
+                    allSubs.firstOrNull { it.id == subId }?.takeIf { !it.isDefault }?.name
+                        ?: categories.firstOrNull { it.id == catId }?.name ?: "Recurring"
+                }
+                vm.ruleFromTxn(txn, name, repeatUnit, repeatEvery, backfill)
+            }
+            if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            onBack()
+        }
+    }
+
+
     fun save() {
         val total = Money.parseToPaise(amount)
         if (total == null || total <= 0) {
@@ -261,18 +279,15 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             // A gold scheme instalment stays one only while it's a Saving entry.
             schemeId = if (type == TxnType.SAVING) schemeId else null
         )
-        saved = true
-        vm.saveTxnFull(txn, newPhotos, if (type == TxnType.EXPENSE) warranty else null) { msg ->
-            if (repeat && old == null) {
-                val name = note.trim().ifBlank {
-                    allSubs.firstOrNull { it.id == subId }?.takeIf { !it.isDefault }?.name
-                        ?: categories.firstOrNull { it.id == catId }?.name ?: "Recurring"
-                }
-                vm.ruleFromTxn(txn, name, repeatUnit, repeatEvery)
+        // "Repeat" on a past date: offer to fill in the due dates between then and today.
+        if (repeat && old == null) {
+            val options = vm.backfillForRepeat(txn, repeatUnit, repeatEvery)
+            if (options.isNotEmpty()) {
+                repeatBackfill = txn to options
+                return
             }
-            if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-            onBack()
         }
+        commit(txn, emptyList())
     }
 
     Scaffold(
@@ -541,6 +556,22 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
 
     if (pickingWarranty) {
         DatePickerSheet(warranty ?: Warranties.until(date, 1), onDismiss = { pickingWarranty = false }) { warranty = it }
+    }
+
+    repeatBackfill?.let { (txn, options) ->
+        com.kye.app.ui.components.BackfillDialog(
+            options = options,
+            amountPaise = txn.amountPaise,
+            onAdd = { dates ->
+                repeatBackfill = null
+                commit(txn, dates)
+            },
+            onSkip = {
+                repeatBackfill = null
+                commit(txn, emptyList())
+            },
+            onDismiss = { repeatBackfill = null }
+        )
     }
 
     deletingPhoto?.let { p ->

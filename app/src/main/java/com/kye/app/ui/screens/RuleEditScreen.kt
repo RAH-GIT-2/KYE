@@ -88,6 +88,7 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
     var active by remember { mutableStateOf(true) }
     var showDate by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var pendingBackfill by remember { mutableStateOf<Pair<RecurringRule, List<com.kye.app.domain.BackfillDate>>?>(null) }
 
     LaunchedEffect(ruleId) {
         if (ruleId > 0) {
@@ -120,7 +121,10 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
                     base, name.trim(), paise, catId, subId, payment, unit, every, start, mode,
                     if (mode == RecurringMode.REMIND_ONLY) remindBefore else 0, active
                 )
-                vm.saveRule(rule) { onBack() }
+                // Starts in the past? Offer to fill in the past due dates first.
+                val options = vm.backfillOptions(base, rule)
+                if (options.isEmpty()) vm.saveRule(rule) { onBack() }
+                else pendingBackfill = rule to options
             }
         }
     }
@@ -235,6 +239,21 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
     }
 
     if (showDate) DatePickerSheet(start, onDismiss = { showDate = false }) { start = it }
+    pendingBackfill?.let { (rule, options) ->
+        com.kye.app.ui.components.BackfillDialog(
+            options = options,
+            amountPaise = rule.amountPaise,
+            onAdd = { dates ->
+                pendingBackfill = null
+                vm.saveRule(rule, dates) { onBack() }
+            },
+            onSkip = {
+                pendingBackfill = null
+                vm.saveRule(rule) { onBack() }
+            },
+            onDismiss = { pendingBackfill = null }
+        )
+    }
 
     if (confirmDelete) {
         AlertDialog(

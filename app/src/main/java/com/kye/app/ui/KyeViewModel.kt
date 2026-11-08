@@ -54,6 +54,7 @@ import com.kye.app.domain.Dates
 import com.kye.app.domain.HomeState
 import com.kye.app.domain.Period
 import com.kye.app.domain.Recurrence
+import com.kye.app.domain.BackfillDate
 import com.kye.app.domain.Stats
 import com.kye.app.voice.KeywordEntry
 import com.kye.app.voice.ParsedEntry
@@ -443,15 +444,33 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun loadRule(id: Long): RecurringRule? = withContext(Dispatchers.IO) { repo.getRule(id) }
 
-    fun saveRule(rule: RecurringRule, onDone: () -> Unit) {
+    fun saveRule(rule: RecurringRule, onDone: () -> Unit) = saveRule(rule, emptyList(), onDone)
+
+    /** Saves the rule plus an entry for each chosen past date, then runs today's recurring work. */
+    fun saveRule(rule: RecurringRule, backfill: List<LocalDate>, onDone: () -> Unit) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                repo.saveRule(rule)
+                repo.saveRuleWithBackfill(rule, backfill)
                 kyeApp.runRecurringNow()
             }
             onDone()
         }
     }
+
+    /**
+     * Past dates the user can fill in for a rule being saved: only for Auto-add rules with a fixed
+     * amount, and only when the schedule is new or changed (otherwise nothing was skipped).
+     */
+    fun backfillOptions(base: RecurringRule?, rule: RecurringRule): List<BackfillDate> {
+        if (rule.mode != RecurringMode.AUTO_ADD || !rule.isActive || rule.amountPaise <= 0) return emptyList()
+        val changed = base == null || base.unit != rule.unit || base.interval != rule.interval || base.anchorDate != rule.anchorDate
+        if (!changed) return emptyList()
+        return Recurrence.backfill(rule, 0, txns.value.map { it.txn }, LocalDate.now())
+    }
+
+    /** Past dates for "Repeat" on the + screen: the entry being saved is occurrence 0, so start at 1. */
+    fun backfillForRepeat(txn: Txn, unit: RepeatUnit, interval: Int): List<BackfillDate> =
+        Recurrence.backfill(ruleFor(txn, "", unit, interval), 1, txns.value.map { it.txn }, LocalDate.now())
 
     fun deleteRule(rule: RecurringRule, onDone: () -> Unit) {
         viewModelScope.launch {
@@ -510,10 +529,24 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** "Make this recurring" from the add screen: this entry is occurrence 0, the rule starts at the next one. */
-    fun ruleFromTxn(txn: Txn, name: String, unit: RepeatUnit, interval: Int) {
+    fun ruleFromTxn(txn: Txn, name: String, unit: RepeatUnit, interval: Int, backfill: List<LocalDate> = emptyList()) {
+        val start = Dates.toLocalDate(txn.dateTime)
+        // Past dates are either filled in now (chosen in the dialog) or skipped; carry on from today.
+        val index = Recurrence.firstIndexOnOrAfter(start, unit, interval, LocalDate.now()).coerceAtLeast(1)
+        val rule = ruleFor(txn, name, unit, interval).copy(
+            occurrenceIndex = index,
+            nextDueDate = Recurrence.occurrence(start, unit, interval, index).toEpochDay()
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.saveRuleWithBackfill(rule, backfill)
+            kyeApp.runRecurringNow()
+        }
+    }
+
+    private fun ruleFor(txn: Txn, name: String, unit: RepeatUnit, interval: Int): RecurringRule {
         val start = Dates.toLocalDate(txn.dateTime)
         val next = Recurrence.occurrence(start, unit, interval, 1)
-        val rule = RecurringRule(
+        return RecurringRule(
             name = name,
             amountPaise = txn.amountPaise,
             type = txn.type,
@@ -527,7 +560,6 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
             nextDueDate = next.toEpochDay(),
             mode = RecurringMode.AUTO_ADD
         )
-        viewModelScope.launch(Dispatchers.IO) { repo.saveRule(rule) }
     }
 
     // ---------- Budgets & export ----------

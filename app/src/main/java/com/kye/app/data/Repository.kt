@@ -394,6 +394,20 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
     suspend fun saveRule(rule: RecurringRule): Long = recurringDao.upsert(rule)
     suspend fun deleteRule(rule: RecurringRule) = recurringDao.delete(rule)
 
+    /**
+     * Saves a rule and adds an entry for each chosen past due date ([backfill]), all at once. The
+     * rule itself carries on from its next due date as usual. Returns the rule's id.
+     */
+    suspend fun saveRuleWithBackfill(rule: RecurringRule, backfill: List<LocalDate>): Long = recurringLock.withLock {
+        db.withTransaction {
+            val upserted = recurringDao.upsert(rule)
+            val id = if (rule.id != 0L) rule.id else upserted
+            val saved = rule.copy(id = id)
+            backfill.distinct().sorted().forEach { txnDao.insert(txnFromRule(saved, saved.amountPaise, it)) }
+            id
+        }
+    }
+
     fun advance(rule: RecurringRule): RecurringRule {
         val i = rule.occurrenceIndex + 1
         val next = Recurrence.occurrence(LocalDate.ofEpochDay(rule.anchorDate), rule.unit, rule.interval, i)

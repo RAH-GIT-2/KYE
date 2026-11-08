@@ -128,4 +128,23 @@ class RecurringAndBudgetTest {
         repo.setBudget(1, null)
         assertNull(repo.saveWithBudgetCheck(spend(5_000), "Food"))
     }
+
+    @Test fun backfilledPastDatesAreAddedOnceAndTheRuleCarriesOn() = runBlocking {
+        // Rent from 5 Aug, created on 7 Nov, past dates chosen except 5 Sep.
+        val anchor = LocalDate.of(2026, 8, 5)
+        val k = com.kye.app.domain.Recurrence.firstIndexOnOrAfter(anchor, RepeatUnit.MONTH, 1, today)
+        val r = rule(anchor).copy(occurrenceIndex = k, nextDueDate = LocalDate.of(2026, 12, 5).toEpochDay())
+        val id = repo.saveRuleWithBackfill(r, listOf(LocalDate.of(2026, 8, 5), LocalDate.of(2026, 10, 5), LocalDate.of(2026, 11, 5)))
+        repo.processRecurring(today)
+        assertEquals(listOf(LocalDate.of(2026, 8, 5), LocalDate.of(2026, 10, 5), LocalDate.of(2026, 11, 5)), entries())
+        assertTrue(db.txnDao().allRows().all { it.txn.recurringRuleId == id && it.txn.source == Source.RECURRING })
+        assertEquals(LocalDate.of(2026, 12, 5).toEpochDay(), repo.getRule(id)!!.nextDueDate)
+
+        // Re-dating the rule offers only dates it has no entry on yet.
+        val saved = repo.getRule(id)!!
+        val options = com.kye.app.domain.Recurrence.backfill(
+            saved.copy(anchorDate = LocalDate.of(2026, 7, 5).toEpochDay()), 0, db.backupDao().txns(), today
+        )
+        assertEquals(listOf(LocalDate.of(2026, 7, 5), LocalDate.of(2026, 9, 5)), options.map { it.date })
+    }
 }

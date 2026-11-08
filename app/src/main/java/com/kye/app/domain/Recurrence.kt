@@ -2,6 +2,7 @@ package com.kye.app.domain
 
 import com.kye.app.data.RecurringRule
 import com.kye.app.data.RepeatUnit
+import com.kye.app.data.Txn
 import java.time.LocalDate
 
 object Recurrence {
@@ -26,6 +27,44 @@ object Recurrence {
         return i
     }
 
+    /**
+     * Past due dates a new (or re-dated) Auto-add rule could fill in: occurrences from [fromIndex]
+     * up to yesterday (today's is added by the normal run), within the rule's end date. Dates this rule
+     * already has an entry on are left out. A date is marked [BackfillDate.looksAdded] when an entry
+     * of the same type, amount and category is already near it (entered by hand).
+     */
+    fun backfill(
+        rule: RecurringRule,
+        fromIndex: Int,
+        existing: List<Txn>,
+        today: LocalDate,
+        max: Int = 1000
+    ): List<BackfillDate> {
+        val anchor = LocalDate.ofEpochDay(rule.anchorDate)
+        val window = when (rule.unit) {
+            RepeatUnit.DAY -> 0L
+            RepeatUnit.WEEK -> 1L
+            RepeatUnit.MONTH, RepeatUnit.YEAR -> 3L
+        }
+        val days = existing.map { it to Dates.toLocalDate(it.dateTime).toEpochDay() }
+        val out = ArrayList<BackfillDate>()
+        var i = fromIndex
+        while (out.size < max) {
+            val d = occurrence(anchor, rule.unit, rule.interval, i++)
+            if (!d.isBefore(today)) break
+            if (rule.endDate != null && d.toEpochDay() > rule.endDate) break
+            val day = d.toEpochDay()
+            if (rule.id != 0L && days.any { (t, td) -> t.recurringRuleId == rule.id && td == day }) continue
+            val similar = days.any { (t, td) ->
+                t.type == rule.type && t.amountPaise == rule.amountPaise && t.categoryId == rule.categoryId &&
+                    (rule.subcategoryId == null || t.subcategoryId == rule.subcategoryId) &&
+                    kotlin.math.abs(td - day) <= window
+            }
+            out += BackfillDate(d, similar)
+        }
+        return out
+    }
+
     fun monthlyEquivalent(rule: RecurringRule): Long {
         val n = rule.interval.coerceAtLeast(1)
         return when (rule.unit) {
@@ -46,3 +85,6 @@ object Recurrence {
             }
         } else "Every $interval ${unit.plural}"
 }
+
+/** A past due date that can be filled in; [looksAdded] = a matching entry already exists near it. */
+data class BackfillDate(val date: LocalDate, val looksAdded: Boolean)
