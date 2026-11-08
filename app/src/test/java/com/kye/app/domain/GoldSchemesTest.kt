@@ -157,6 +157,7 @@ class ReportsTest {
         assertEquals(12, Reports.recentMonths(today).size)
         assertEquals(YearMonth.of(2026, 11), Reports.recentMonths(today).first())
     }
+}
 
 class YearlyReportTest {
     private val today = LocalDate.of(2026, 11, 8)
