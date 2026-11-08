@@ -1,0 +1,90 @@
+# Builds KYE on GitHub's machines: runs the tests, builds the release APK signed with the
+# project's own key, and publishes it as a GitHub Release named after the app version
+# (e.g. "KYE v1.7.1"). Open the repo's Releases page on the phone to download and install.
+#
+# Needs four repository secrets (Settings > Secrets and variables > Actions):
+#   KYE_KEYSTORE_BASE64  the release .jks file, base64-encoded
+#   KYE_STORE_PASSWORD, KYE_KEY_ALIAS, KYE_KEY_PASSWORD
+# Without them the job stops: an APK signed with any other key can't install over the
+# app already on the phone.
+
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # to create the release
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Make the Gradle wrapper runnable
+        run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --console=plain
+
+      - name: Upload test report if tests failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests/
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KYE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KYE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KYE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KYE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Release signing secrets are missing. See the comment at the top of this file."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/kye-release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/kye-release.jks" "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --console=plain
+
+      - name: Name the APK after the version
+        id: version
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          cp app/build/outputs/apk/release/app-release.apk "KYE-v$VERSION.apk"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}
+          name: KYE v${{ steps.version.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            Built from ${{ github.sha }}.
+            Install on the phone over the current KYE (don't uninstall first).
+          files: KYE-v${{ steps.version.outputs.name }}.apk
+
+      - name: Remove the key from the build machine
+        if: always()
+        run: rm -f "$RUNNER_TEMP/kye-release.jks" keystore.properties

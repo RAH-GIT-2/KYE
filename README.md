@@ -5,10 +5,10 @@ An India-first Android expense tracker with voice entry in English, Tamil and Ta
 ## Get the APK
 
 ### Option A: let GitHub build it (no Android Studio needed)
-1. Create a **private** GitHub repo and push this folder to its `main` branch.
-2. Open the repo's **Actions** tab → **Build APK**. It runs automatically on every push, or tap **Run workflow**.
-3. When it finishes (about 5–8 minutes), open the run and download **KYE-apk** from *Artifacts*.
-4. Unzip it, copy `app-release.apk` to your phone, open it, and allow "Install unknown apps" when asked.
+Every push to `main` runs `.github/workflows/build.yml`: all unit tests, then a release APK signed with the project key, published as a GitHub Release named after the version (e.g. **KYE v1.7.1**).
+1. One-time setup: add the repository secrets `KYE_KEYSTORE_BASE64`, `KYE_STORE_PASSWORD`, `KYE_KEY_ALIAS` and `KYE_KEY_PASSWORD` (Settings → Secrets and variables → Actions). Without them the build stops instead of producing an APK that can't install over the current one.
+2. Push, or open **Actions → Build APK → Run workflow**.
+3. On the phone, open the repo's **Releases** page, download `KYE-v<version>.apk` and install it over the current app.
 
 ### Option B: Android Studio
 1. Install Android Studio (Ladybug or newer) and open this folder.
