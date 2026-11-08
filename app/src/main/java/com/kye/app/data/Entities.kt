@@ -65,7 +65,7 @@ data class Subcategory(
     @ColumnInfo(defaultValue = "0") val isDefault: Boolean = false
 )
 
-@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId"), Index("eventId"), Index("goalId"), Index("schemeId")])
+@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId"), Index("eventId"), Index("goalId"), Index("schemeId"), Index("cardId")])
 data class Txn(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val amountPaise: Long,
@@ -85,7 +85,9 @@ data class Txn(
     /** Savings goal this Saving (or withdrawal Transfer) entry belongs to. */
     val goalId: Long? = null,
     /** Gold scheme this Saving entry is an instalment of. */
-    val schemeId: Long? = null
+    val schemeId: Long? = null,
+    /** Credit card this expense was put on, or whose bill this Transfer paid. */
+    val cardId: Long? = null
 )
 
 /** A receipt / bill photo, stored privately in the app's files (receipts/<fileName>). */
@@ -157,6 +159,26 @@ data class GoldScheme(
     /** Redeemed or stopped: no longer reminded, kept as a record. */
     val isClosed: Boolean = false,
     val closedOn: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * A credit card. The bill is made on [billDay] each month (statement date, clamped to the month's
+ * last day) and is due [dueDays] later. Expenses put on the card carry its id; paying the bill is a
+ * Transfer with the card's id, so spending is never counted twice.
+ */
+@Entity(tableName = "credit_card")
+data class CreditCard(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val last4: String = "",
+    val billDay: Int,
+    val dueDays: Int = 20,
+    val limitPaise: Long? = null,
+    val remind: Boolean = true,
+    /** Due date (epoch day) last reminded about. */
+    val lastRemindedFor: Long? = null,
+    val isClosed: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -305,5 +327,5 @@ data class TxnRow(
         get() = subName?.takeIf { subIsDefault != true }
 
     val title: String
-        get() = specificSub ?: catName ?: "Uncategorised"
+        get() = specificSub ?: catName ?: txn.note.takeIf { it.isNotBlank() } ?: "Uncategorised"
 }

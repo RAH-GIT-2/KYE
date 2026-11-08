@@ -89,6 +89,8 @@ import com.kye.app.ui.screens.GoalsScreen
 import com.kye.app.ui.screens.GoldSchemeDetailScreen
 import com.kye.app.ui.screens.GoldSchemesScreen
 import com.kye.app.ui.screens.SubscriptionsScreen
+import com.kye.app.ui.screens.CardDetailScreen
+import com.kye.app.ui.screens.CardsScreen
 import com.kye.app.ui.screens.ImportScreen
 import com.kye.app.ui.screens.WarrantiesScreen
 import com.kye.app.ui.screens.LoanDetailScreen
@@ -319,7 +321,8 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onAsk = { mic -> nav.navigate("ask?mic=$mic") },
                     onEvent = { nav.navigate("event/$it") },
                     onGoal = { nav.navigate("goal/$it") },
-                    onScheme = { nav.navigate("scheme/$it") }
+                    onScheme = { nav.navigate("scheme/$it") },
+                    onCard = { nav.navigate("card/$it") }
                 )
             }
             composable("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
@@ -335,6 +338,13 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 GoldSchemeDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
+            }
+            composable("cards") { CardsScreen(vm, onOpen = { nav.navigate("card/$it") }) { nav.popBackStack() } }
+            composable(
+                "card/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { e ->
+                CardDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
             composable("subscriptions") {
                 SubscriptionsScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") }, onNew = { nav.navigate("rule") }) { nav.popBackStack() }
@@ -397,6 +407,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onLoans = { nav.navigate("loans") },
                     onEvents = { nav.navigate("events") },
                     onSubscriptions = { nav.navigate("subscriptions") },
+                    onCards = { nav.navigate("cards") },
                     onGoals = { nav.navigate("goals") },
                     onSchemes = { nav.navigate("schemes") },
                     onWarranties = { nav.navigate("warranties") }

@@ -111,6 +111,12 @@ class DatabaseUpgradeTest {
         val schemeId = db.schemeDao().insert(GoldScheme(name = "GRT", monthlyPaise = 5_000_00, months = 11, startDate = 1))
         db.txnDao().insert(Txn(amountPaise = 5_000_00, type = TxnType.SAVING, categoryId = null, subcategoryId = null, dateTime = 5, paymentMode = PaymentMode.UPI, schemeId = schemeId))
         assertEquals(5_000_00L, db.schemeDao().open().single().paidPaise)
+
+        // v8 added credit cards.
+        assertEquals(null, db.txnDao().get(1)!!.cardId)
+        val cardId = db.cardDao().insert(CreditCard(name = "HDFC", billDay = 5))
+        db.txnDao().insert(Txn(amountPaise = 100_00, type = TxnType.EXPENSE, categoryId = null, subcategoryId = null, dateTime = 6, paymentMode = PaymentMode.CREDIT_CARD, cardId = cardId))
+        assertEquals(1, db.cardDao().cardTxns().size)
         db.close()
     }
 

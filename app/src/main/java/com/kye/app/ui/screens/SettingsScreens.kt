@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.Handshake
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material.icons.rounded.Diamond
 import androidx.compose.material.icons.rounded.Subscriptions
+import androidx.compose.material.icons.rounded.CreditCard
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import com.kye.app.domain.Reports
 import java.time.YearMonth
@@ -102,6 +103,7 @@ fun SettingsScreen(
     onLoans: () -> Unit,
     onEvents: () -> Unit,
     onSubscriptions: () -> Unit,
+    onCards: () -> Unit,
     onGoals: () -> Unit,
     onSchemes: () -> Unit,
     onWarranties: () -> Unit
@@ -176,6 +178,7 @@ fun SettingsScreen(
             ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
             ActionRow(Icons.Rounded.Flag, "Savings goals", "A trip, a bike, a phone: a target, and how much to save each month", onGoals)
             ActionRow(Icons.Rounded.Diamond, "Gold schemes", "Monthly jewellery schemes: instalments, due-day reminders, maturity", onSchemes)
+            ActionRow(Icons.Rounded.CreditCard, "Credit cards", "What each bill comes to, when it's due, and a reminder before", onCards)
             ActionRow(Icons.Rounded.Subscriptions, "Subscriptions", "Netflix, Prime, Jio…: what they cost in a year, with a reminder before yearly renewals", onSubscriptions)
             ActionRow(Icons.Rounded.Celebration, "Events", "Deepavali, a wedding or a trip, each with its own budget", onEvents)
             ActionRow(Icons.Rounded.Handshake, "Lent & borrowed", "Who owes you, whom you owe, part repayments and due-date reminders", onLoans)

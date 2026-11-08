@@ -209,3 +209,20 @@ fun SchemeChips(schemes: List<com.kye.app.data.GoldScheme>, selectedId: Long?, o
         schemes.forEach { s -> ChoiceChip(s.name, selectedId == s.id, { onSelect(if (selectedId == s.id) null else s.id) }, leading = "🪙") }
     }
 }
+
+/** Which credit card an expense went on (shown when "Credit card" is the payment mode). */
+@Composable
+fun CardChips(cards: List<com.kye.app.data.CreditCard>, selectedId: Long?, onSelect: (Long?) -> Unit) {
+    if (cards.isEmpty()) return
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Card", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ChoiceChip("None", selectedId == null, { onSelect(null) })
+        cards.forEach { c ->
+            ChoiceChip(c.name + if (c.last4.isNotBlank()) " ··${c.last4}" else "", selectedId == c.id, { onSelect(if (selectedId == c.id) null else c.id) }, leading = "💳")
+        }
+    }
+}

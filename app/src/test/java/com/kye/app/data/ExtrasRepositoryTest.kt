@@ -270,4 +270,36 @@ class ExtrasRepositoryTest {
         assertFalse("photo file removed", File(dir, "r-b.jpg").exists())
         assertEquals(300_00L, repo.getTxn(c)!!.amountPaise)
     }
+
+    @Test fun creditCardExpensesPaymentsAndBackup() = runBlocking {
+        repo.ensureSeeded()
+        val cardId = repo.saveCard(CreditCard(name = " HDFC  Millennia ", billDay = 5, dueDays = 20))
+        assertTrue(runCatching { repo.saveCard(CreditCard(name = "x", billDay = 40)) }.exceptionOrNull() is UserError)
+
+        // A credit-card expense with no card picked goes on the only card.
+        val spentId = buy(2_000, "TV stand")
+        assertEquals(cardId, repo.getTxn(spentId)!!.cardId)
+        // UPI spending doesn't.
+        val upi = repo.saveTxn(Txn(amountPaise = 100_00, type = TxnType.EXPENSE, categoryId = null, subcategoryId = null,
+            dateTime = Dates.atMillis(today, LocalTime.NOON), paymentMode = PaymentMode.UPI))
+        assertNull(repo.getTxn(upi)!!.cardId)
+
+        // Paying the bill is a transfer tagged to the card.
+        val payId = repo.payCardBill(cardId, 2_000_00, today, PaymentMode.NET_BANKING)
+        val pay = repo.getTxn(payId)!!
+        assertEquals(TxnType.TRANSFER, pay.type)
+        assertEquals(cardId, pay.cardId)
+        assertEquals("HDFC Millennia", db.cardDao().get(cardId)!!.name)
+        val status = com.kye.app.domain.Cards.status(db.cardDao().get(cardId)!!, db.cardDao().cardTxns(), today)
+        assertEquals(0L, status.outstanding)
+
+        // Backup round trip keeps the card and its tags.
+        val out = ByteArrayOutputStream()
+        repo.exportBackup(out)
+        repo.deleteCard(cardId)
+        assertNull(repo.getTxn(spentId)!!.cardId)
+        repo.importBackup(ByteArrayInputStream(out.toByteArray()))
+        assertEquals(cardId, repo.getTxn(spentId)!!.cardId)
+        assertEquals(1, repo.cards.first().size)
+    }
 }

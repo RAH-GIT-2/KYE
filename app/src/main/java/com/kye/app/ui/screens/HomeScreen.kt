@@ -77,8 +77,14 @@ fun HomeScreen(
     onAsk: (Boolean) -> Unit,
     onEvent: (Long) -> Unit,
     onGoal: (Long) -> Unit,
-    onScheme: (Long) -> Unit
+    onScheme: (Long) -> Unit,
+    onCard: (Long) -> Unit
 ) {
+    val cardStatuses by vm.cardStatuses.collectAsStateWithLifecycle()
+    // Card bills due within 5 days, or overdue.
+    val cardsDue = cardStatuses.filter { s ->
+        !s.card.isClosed && s.due > 0 && !s.dueDate.isAfter(LocalDate.now().plusDays(5))
+    }
     val catMap by vm.categoryMap.collectAsStateWithLifecycle()
     val allSubs by vm.allSubcategories.collectAsStateWithLifecycle()
     val subMap = remember(allSubs) { allSubs.associateBy { it.id } }
@@ -199,6 +205,21 @@ fun HomeScreen(
         }
 
         s.forecast?.let { f -> item(key = "forecast") { ForecastCard(f, today, onBudgets) } }
+
+        if (cardsDue.isNotEmpty()) {
+            item(key = "cards") {
+                SectionCard(title = "Credit card bills") {
+                    cardsDue.forEachIndexed { i, s ->
+                        if (i > 0) Spacer(Modifier.height(12.dp))
+                        Column(Modifier.fillMaxWidth().clickable { onCard(s.card.id) }) {
+                            Text("💳 ${s.card.name}", style = MaterialTheme.typography.bodyLarge)
+                            Spacer(Modifier.height(2.dp))
+                            CardBillLine(s, today)
+                        }
+                    }
+                }
+            }
+        }
 
         if (schemesDue.isNotEmpty()) {
             item(key = "schemes") {

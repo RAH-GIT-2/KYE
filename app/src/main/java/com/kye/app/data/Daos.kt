@@ -347,6 +347,34 @@ interface SchemeDao {
     @Query("UPDATE txn SET schemeId = NULL WHERE schemeId = :schemeId") suspend fun untagAll(schemeId: Long)
 }
 
+/** Credit cards (v2.8). */
+@Dao
+interface CardDao {
+    @Query("SELECT * FROM credit_card ORDER BY isClosed, name COLLATE NOCASE")
+    fun observeAll(): Flow<List<CreditCard>>
+
+    @Query("SELECT * FROM credit_card WHERE isClosed = 0")
+    suspend fun open(): List<CreditCard>
+
+    /** Every entry tagged to any card, for bill maths. */
+    @Query("SELECT * FROM txn WHERE cardId IS NOT NULL")
+    fun observeCardTxns(): Flow<List<Txn>>
+
+    @Query("SELECT * FROM txn WHERE cardId IS NOT NULL")
+    suspend fun cardTxns(): List<Txn>
+
+    @Query(ROW_SELECT + " WHERE t.cardId = :cardId ORDER BY t.dateTime DESC, t.id DESC")
+    fun observeTxns(cardId: Long): Flow<List<TxnRow>>
+
+    @Query("SELECT * FROM credit_card WHERE id = :id") suspend fun get(id: Long): CreditCard?
+    @Insert suspend fun insert(c: CreditCard): Long
+    @Update suspend fun update(c: CreditCard)
+    @Query("DELETE FROM credit_card WHERE id = :id") suspend fun delete(id: Long)
+
+    /** Deleting a card keeps its entries; they just lose the tag. */
+    @Query("UPDATE txn SET cardId = NULL WHERE cardId = :cardId") suspend fun untagAll(cardId: Long)
+}
+
 /** Raw table access for JSON backup and restore. */
 @Dao
 interface BackupDao {
@@ -376,6 +404,9 @@ interface BackupDao {
     @Query("SELECT * FROM gold_scheme") suspend fun schemes(): List<GoldScheme>
     @Insert suspend fun insertSchemes(v: List<GoldScheme>)
     @Query("DELETE FROM gold_scheme") suspend fun clearSchemes()
+    @Query("SELECT * FROM credit_card") suspend fun cards(): List<CreditCard>
+    @Insert suspend fun insertCards(v: List<CreditCard>)
+    @Query("DELETE FROM credit_card") suspend fun clearCards()
     @Query("DELETE FROM loan") suspend fun clearLoans()
 
     @Insert suspend fun insertCategories(v: List<Category>)

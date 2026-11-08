@@ -111,6 +111,34 @@ object Notifier {
         )
     }
 
+    /** "HDFC card bill: ₹12,340 due 25 Nov". Amounts hidden while app lock is on. */
+    @SuppressLint("MissingPermission")
+    fun showCardReminder(context: Context, s: com.kye.app.domain.CardStatus, hideAmounts: Boolean) {
+        if (!canNotify(context)) return
+        val id = 500_000 + s.card.id.toInt()
+        val today = LocalDate.now()
+        val whenText = when {
+            s.dueDate == today -> "due today"
+            s.dueDate.isBefore(today) -> "was due ${Dates.label(s.dueDate)}"
+            else -> "due ${Dates.label(s.dueDate)}"
+        }
+        val open = PendingIntent.getActivity(
+            context, id,
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        NotificationManagerCompat.from(context).notify(
+            id,
+            NotificationCompat.Builder(context, CHANNEL_BILLS)
+                .setSmallIcon(R.drawable.ic_stat_kye)
+                .setContentTitle("💳 ${s.card.name} bill: " + (if (hideAmounts) "" else "${Money.format(s.due)} ") + whenText)
+                .setContentText("Settings → Credit cards → Pay bill once it's paid")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+        )
+    }
+
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(

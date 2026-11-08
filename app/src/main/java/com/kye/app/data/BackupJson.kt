@@ -18,6 +18,7 @@ data class BackupData(
     val warranties: List<Warranty> = emptyList(),
     val goals: List<Goal> = emptyList(),
     val schemes: List<GoldScheme> = emptyList(),
+    val cards: List<CreditCard> = emptyList(),
     /** When the backup was made (from the file), if known. */
     val exportedAt: Long? = null
 )
@@ -51,7 +52,7 @@ object BackupJson {
                     .put("dateTime", it.dateTime).put("paymentMode", it.paymentMode.name).put("note", it.note)
                     .put("source", it.source.name).putOpt("recurringRuleId", it.recurringRuleId)
                     .putOpt("rawVoiceText", it.rawVoiceText).put("createdAt", it.createdAt).put("updatedAt", it.updatedAt)
-                    .putOpt("eventId", it.eventId).putOpt("goalId", it.goalId).putOpt("schemeId", it.schemeId)
+                    .putOpt("eventId", it.eventId).putOpt("goalId", it.goalId).putOpt("schemeId", it.schemeId).putOpt("cardId", it.cardId)
             }))
             .put("recurringRules", JSONArray(d.rules.map {
                 JSONObject().put("id", it.id).put("name", it.name).put("amountPaise", it.amountPaise).put("type", it.type.name)
@@ -93,6 +94,11 @@ object BackupJson {
             .put("goals", JSONArray(d.goals.map {
                 JSONObject().put("id", it.id).put("name", it.name).put("emoji", it.emoji).put("targetPaise", it.targetPaise)
                     .putOpt("targetDate", it.targetDate).put("isClosed", it.isClosed).put("createdAt", it.createdAt)
+            }))
+            .put("creditCards", JSONArray(d.cards.map {
+                JSONObject().put("id", it.id).put("name", it.name).put("last4", it.last4).put("billDay", it.billDay)
+                    .put("dueDays", it.dueDays).putOpt("limitPaise", it.limitPaise).put("remind", it.remind)
+                    .putOpt("lastRemindedFor", it.lastRemindedFor).put("isClosed", it.isClosed).put("createdAt", it.createdAt)
             }))
             .put("goldSchemes", JSONArray(d.schemes.map {
                 JSONObject().put("id", it.id).put("name", it.name).put("monthlyPaise", it.monthlyPaise)
@@ -140,7 +146,8 @@ object BackupJson {
                     createdAt = it.optLong("createdAt"), updatedAt = it.optLong("updatedAt"),
                     eventId = it.longOrNull("eventId"),
                     goalId = it.longOrNull("goalId"),
-                    schemeId = it.longOrNull("schemeId")
+                    schemeId = it.longOrNull("schemeId"),
+                    cardId = it.longOrNull("cardId")
                 )
             }
             val rules = root.getJSONArray("recurringRules").objects().map {
@@ -213,11 +220,22 @@ object BackupJson {
                 )
             }
             val schemeIds = schemes.map { it.id }.toSet()
+            // Credit cards arrived in v2.8.
+            val cards = (root.optJSONArray("creditCards") ?: JSONArray()).objects().map {
+                CreditCard(
+                    id = it.getLong("id"), name = it.getString("name"), last4 = it.optString("last4"),
+                    billDay = it.getInt("billDay"), dueDays = it.optInt("dueDays", 20), limitPaise = it.longOrNull("limitPaise"),
+                    remind = it.optBoolean("remind", true), lastRemindedFor = it.longOrNull("lastRemindedFor"),
+                    isClosed = it.optBoolean("isClosed"), createdAt = it.optLong("createdAt")
+                )
+            }
+            val cardIds = cards.map { it.id }.toSet()
             val txnsChecked = txns.map {
                 it.copy(
                     eventId = it.eventId?.takeIf { id -> id in eventIds },
                     goalId = it.goalId?.takeIf { id -> id in goalIds },
-                    schemeId = it.schemeId?.takeIf { id -> id in schemeIds }
+                    schemeId = it.schemeId?.takeIf { id -> id in schemeIds },
+                    cardId = it.cardId?.takeIf { id -> id in cardIds }
                 )
             }
             val txnIds = txnsChecked.map { it.id }.toSet()
@@ -230,7 +248,7 @@ object BackupJson {
             if (categories.isEmpty()) throw UserError("This backup has no categories")
             return BackupData(
                 root.optInt("seedVersion", 1), categories, subcategories, txnsChecked, rules, budgets, keywords,
-                loans, loanPayments, events, attachments, warranties, goals, schemes,
+                loans, loanPayments, events, attachments, warranties, goals, schemes, cards,
                 root.optLong("exportedAt").takeIf { it > 0 }
             )
         } catch (e: UserError) {

@@ -7,6 +7,8 @@ import com.kye.app.domain.Events
 import com.kye.app.domain.GoldSchemes
 import com.kye.app.domain.MonthlyReport
 import com.kye.app.domain.Reports
+import com.kye.app.domain.Cards
+import com.kye.app.domain.CardStatus
 import com.kye.app.domain.Subscriptions
 import com.kye.app.domain.Loans
 import com.kye.app.domain.Money
@@ -313,7 +315,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
     suspend fun getTxn(id: Long): Txn? = txnDao.get(id)
 
     suspend fun saveTxn(txn: Txn): Long =
-        if (txn.id == 0L) txnDao.insert(txn)
+        if (txn.id == 0L) txnDao.insert(withOnlyCard(txn))
         else {
             txnDao.update(txn.copy(updatedAt = System.currentTimeMillis()))
             txn.id
@@ -327,6 +329,16 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
     }
 
     private fun receiptFile(name: String): File? = receiptsDir?.let { File(it, name) }
+
+    /**
+     * A new credit-card expense with no card picked (voice, Quick type, Add again) goes on the card
+     * when there is exactly one open card.
+     */
+    private suspend fun withOnlyCard(txn: Txn): Txn {
+        if (txn.cardId != null || txn.type != TxnType.EXPENSE || txn.paymentMode != PaymentMode.CREDIT_CARD) return txn
+        val only = db.cardDao().open().singleOrNull() ?: return txn
+        return txn.copy(cardId = only.id)
+    }
 
     /** Saves several edited entries together (History: change category, payment or event). */
     suspend fun updateTxns(txns: List<Txn>) {
@@ -750,6 +762,58 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
         }
     }
 
+    // ---------- Credit cards ----------
+
+    val cards: Flow<List<CreditCard>> = db.cardDao().observeAll()
+    val cardTxns: Flow<List<Txn>> = db.cardDao().observeCardTxns()
+    fun cardRows(cardId: Long): Flow<List<TxnRow>> = db.cardDao().observeTxns(cardId)
+
+    suspend fun saveCard(c: CreditCard): Long {
+        val clean = c.copy(name = c.name.trim().replace(Regex("\\s+"), " "), last4 = c.last4.trim())
+        Cards.check(clean)?.let { throw UserError(it) }
+        val dao = db.cardDao()
+        return if (c.id == 0L) dao.insert(clean) else {
+            dao.update(clean)
+            c.id
+        }
+    }
+
+    suspend fun setCardClosed(id: Long, closed: Boolean) {
+        val c = db.cardDao().get(id) ?: return
+        db.cardDao().update(c.copy(isClosed = closed))
+    }
+
+    /** Deletes the card only; its entries stay, untagged. */
+    suspend fun deleteCard(id: Long) = db.withTransaction {
+        db.cardDao().untagAll(id)
+        db.cardDao().delete(id)
+    }
+
+    /** Paying the bill: a Transfer tagged to the card (money moved, not spent again). */
+    suspend fun payCardBill(cardId: Long, amount: Long, date: LocalDate, payment: PaymentMode): Long {
+        if (amount <= 0) throw UserError("Enter an amount")
+        val c = db.cardDao().get(cardId) ?: throw UserError("Card not found")
+        val time = if (date == LocalDate.now()) LocalTime.now() else LocalTime.NOON
+        return saveTxn(
+            Txn(
+                amountPaise = amount, type = TxnType.TRANSFER, categoryId = null, subcategoryId = null,
+                dateTime = Dates.atMillis(date, time), paymentMode = payment,
+                note = "💳 ${c.name} bill paid", cardId = cardId
+            )
+        )
+    }
+
+    /** Cards with a bill due within [Cards.REMIND_DAYS] days (or overdue); each bill is reminded once. */
+    suspend fun cardsToRemind(today: LocalDate): List<CardStatus> {
+        val dao = db.cardDao()
+        return db.withTransaction {
+            val txns = dao.cardTxns()
+            dao.open().map { Cards.status(it, txns, today) }.filter { Cards.shouldRemind(it, today) }.onEach {
+                dao.update(it.card.copy(lastRemindedFor = it.dueDate.toEpochDay()))
+            }
+        }
+    }
+
     // ---------- Monthly report ----------
 
     suspend fun monthlyReport(month: YearMonth, today: LocalDate = LocalDate.now()): MonthlyReport {
@@ -880,7 +944,8 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
                 attachments = backupDao.attachments(),
                 warranties = backupDao.warranties(),
                 goals = backupDao.goals(),
-                schemes = backupDao.schemes()
+                schemes = backupDao.schemes(),
+                cards = backupDao.cards()
             )
         }
         // A .zip: the data as JSON, plus every receipt photo.
@@ -955,6 +1020,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
             backupDao.clearWarranties()
             backupDao.clearGoals()
             backupDao.clearSchemes()
+            backupDao.clearCards()
             backupDao.clearLoanPayments()
             backupDao.clearLoans()
             backupDao.clearEvents()
@@ -975,6 +1041,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
             backupDao.insertEvents(data.events)
             backupDao.insertGoals(data.goals)
             backupDao.insertSchemes(data.schemes)
+            backupDao.insertCards(data.cards)
             backupDao.insertAttachments(data.attachments)
             backupDao.insertWarranties(data.warranties)
         }

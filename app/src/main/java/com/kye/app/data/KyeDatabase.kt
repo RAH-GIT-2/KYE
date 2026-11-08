@@ -26,9 +26,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Attachment::class,
         Warranty::class,
         Goal::class,
-        GoldScheme::class
+        GoldScheme::class,
+        CreditCard::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class KyeDatabase : RoomDatabase() {
@@ -42,6 +43,7 @@ abstract class KyeDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
     abstract fun extrasDao(): ExtrasDao
     abstract fun schemeDao(): SchemeDao
+    abstract fun cardDao(): CardDao
 
     companion object {
         /** v2: "Others" subcategories get an explicit flag; a detected-payment table (dropped again in v3). Shipped, so never edit. */
@@ -141,7 +143,21 @@ abstract class KyeDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        /** v8: credit cards. Expenses on a card and bill payments carry the card's id. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `credit_card` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `last4` TEXT NOT NULL, `billDay` INTEGER NOT NULL, `dueDays` INTEGER NOT NULL, " +
+                        "`limitPaise` INTEGER, `remind` INTEGER NOT NULL, `lastRemindedFor` INTEGER, " +
+                        "`isClosed` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE `txn` ADD COLUMN `cardId` INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_txn_cardId` ON `txn` (`cardId`)")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 
         fun build(context: Context): KyeDatabase =
             Room.databaseBuilder(context, KyeDatabase::class.java, "kye.db")

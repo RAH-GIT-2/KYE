@@ -188,6 +188,24 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     fun payScheme(schemeId: Long, amount: Long, date: LocalDate, payment: PaymentMode, onError: (String) -> Unit, onDone: () -> Unit) =
         change(onError, onDone) { repo.paySchemeInstalment(schemeId, amount, date, payment) }
 
+    // ---------- Credit cards ----------
+
+    val cards: StateFlow<List<com.kye.app.data.CreditCard>> = repo.cards
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Each card with where its bill stands today. */
+    val cardStatuses: StateFlow<List<com.kye.app.domain.CardStatus>> =
+        combine(repo.cards, repo.cardTxns) { cs, txns -> cs.map { com.kye.app.domain.Cards.status(it, txns, LocalDate.now()) } }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun cardRows(cardId: Long) = repo.cardRows(cardId)
+    fun saveCard(c: com.kye.app.data.CreditCard, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.saveCard(c) }
+    fun setCardClosed(id: Long, closed: Boolean, onError: (String) -> Unit) = change(onError) { repo.setCardClosed(id, closed) }
+    fun deleteCard(id: Long, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.deleteCard(id) }
+    fun payCardBill(cardId: Long, amount: Long, date: LocalDate, payment: PaymentMode, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.payCardBill(cardId, amount, date, payment) }
+
     // ---------- Monthly PDF report ----------
 
     fun exportReport(uri: Uri, month: YearMonth, onDone: (String) -> Unit) {

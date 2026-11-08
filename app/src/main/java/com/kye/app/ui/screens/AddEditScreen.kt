@@ -27,6 +27,7 @@ import com.kye.app.data.Receipts
 import com.kye.app.ui.components.EventChips
 import com.kye.app.ui.components.GoalChips
 import com.kye.app.ui.components.SchemeChips
+import com.kye.app.ui.components.CardChips
 import com.kye.app.ui.components.ReceiptItem
 import com.kye.app.ui.components.ReceiptStrip
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -120,6 +121,12 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var goalId by remember { mutableStateOf<Long?>(null) }
     val goals by vm.goals.collectAsStateWithLifecycle()
     var schemeId by remember { mutableStateOf<Long?>(null) }
+    var cardId by remember { mutableStateOf<Long?>(null) }
+    val cards by vm.cards.collectAsStateWithLifecycle()
+    // With one card, a new credit-card expense goes on it.
+    LaunchedEffect(payment, cards) {
+        if (txnId <= 0 && payment == PaymentMode.CREDIT_CARD && cardId == null) cardId = cards.filter { !it.isClosed }.singleOrNull()?.id
+    }
     val schemes by vm.schemes.collectAsStateWithLifecycle()
     // Bill photos added in this visit (saved with the entry) and the warranty end date.
     var newPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -214,6 +221,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                 eventId = t.eventId
                 goalId = t.goalId
                 schemeId = t.schemeId
+                cardId = t.cardId
                 warranty = vm.warrantyOf(t.id)?.untilDate?.let { LocalDate.ofEpochDay(it) }
             }
         } else {
@@ -277,7 +285,13 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             eventId = eventId,
             goalId = if (type == TxnType.SAVING) goalId else null,
             // A gold scheme instalment stays one only while it's a Saving entry.
-            schemeId = if (type == TxnType.SAVING) schemeId else null
+            schemeId = if (type == TxnType.SAVING) schemeId else null,
+            // Card: for credit-card expenses; a bill payment (transfer) keeps its card.
+            cardId = when {
+                type == TxnType.EXPENSE && payment == PaymentMode.CREDIT_CARD -> cardId
+                type == TxnType.TRANSFER -> old?.cardId
+                else -> null
+            }
         )
         // "Repeat" on a past date: offer to fill in the due dates between then and today.
         if (repeat && old == null) {
@@ -451,6 +465,9 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
 
             Label(if (type == TxnType.INCOME) "Received via" else "Paid with")
             PaymentChips(payment) { payment = it }
+            if (type == TxnType.EXPENSE && payment == PaymentMode.CREDIT_CARD) {
+                CardChips(cards.filter { !it.isClosed || it.id == cardId }, cardId) { cardId = it }
+            }
 
             EventChips(
                 events = Events.open(events.map { it.event }),
