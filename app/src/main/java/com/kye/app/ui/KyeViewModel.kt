@@ -13,6 +13,9 @@ import com.kye.app.data.CategoryKind
 import com.kye.app.data.KeywordRule
 import com.kye.app.data.Loan
 import com.kye.app.data.LoanRow
+import com.kye.app.domain.Ask
+import com.kye.app.domain.AskAnswer
+import com.kye.app.domain.AskKeyword
 import com.kye.app.domain.LoanSummary
 import com.kye.app.domain.Loans
 import com.kye.app.data.UserError
@@ -127,6 +130,22 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     fun setLoanClosed(id: Long, closed: Boolean, onError: (String) -> Unit) = change(onError) { repo.setLoanClosed(id, closed) }
 
     fun deleteLoan(id: Long, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.deleteLoan(id) }
+
+    // ---------- Ask KYE ----------
+
+    /** Answers a typed or spoken money question from the data on this phone. */
+    suspend fun ask(question: String): AskAnswer = withContext(Dispatchers.Default) {
+        val keywords = repo.keywords().map { AskKeyword(it.phrase, it.categoryId, it.subcategoryId) }
+        Ask.answer(
+            question = question,
+            txns = txns.value,
+            categories = allCategories.value,
+            subcategories = allSubcategories.value,
+            keywords = keywords,
+            loans = loans.value,
+            today = LocalDate.now()
+        )
+    }
 
     /** Includes hidden categories, so old entries and stats still show their real name. */
     val categoryMap: StateFlow<Map<Long, Category>> = repo.allCategories

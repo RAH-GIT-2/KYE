@@ -76,6 +76,7 @@ import androidx.navigation.navArgument
 import com.kye.app.ui.AppLock
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.screens.AddEditScreen
+import com.kye.app.ui.screens.AskScreen
 import com.kye.app.ui.screens.BudgetsScreen
 import com.kye.app.ui.screens.CategoriesScreen
 import com.kye.app.ui.screens.CategoryDetailScreen
@@ -304,8 +305,19 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onSettings = { nav.navigate("settings") },
                     onBudgets = { nav.navigate("budgets") },
                     onRecurring = { nav.goTab("recurring") },
-                    onLoans = { nav.navigate("loans") }
+                    onLoans = { nav.navigate("loans") },
+                    onAsk = { mic -> nav.navigate("ask?mic=$mic") }
                 )
+            }
+            composable(
+                "ask?mic={mic}",
+                arguments = listOf(navArgument("mic") { type = NavType.BoolType; defaultValue = false })
+            ) { e ->
+                AskScreen(
+                    vm,
+                    startWithMic = e.arguments?.getBoolean("mic") ?: false,
+                    onOpenTxn = { nav.navigate("add?id=$it") }
+                ) { nav.popBackStack() }
             }
             composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
             composable("insights") { InsightsScreen(vm) { nav.navigate("budgets") } }

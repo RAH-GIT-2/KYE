@@ -57,6 +57,8 @@ Without that file the release build falls back to the debug key, so it still bui
 
 - **Lent & borrowed** (Home card and Settings): record money you lent or borrowed, part repayments ("got ₹500 back"), due dates with a reminder on the day and weekly while overdue, and a one-tap polite reminder to send on WhatsApp/SMS. Closes when fully repaid, or mark it settled. Kept apart from spending totals; included in backups.
 
+- **Ask KYE** (Home: "Ask" bar, or its mic): type or say a question, answered offline from your own data. "How much on Swiggy this month", "petrol last 3 months", "food in October", "what did I spend yesterday", "biggest expense this month", "how many times Swiggy", "food per day", "income this month", "cash spending this week", "who owes me". Tanglish: "intha maasam swiggy evlo", "nethu evlo selavu". Shows how the question was read, a comparison with the period before, and the matching entries.
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

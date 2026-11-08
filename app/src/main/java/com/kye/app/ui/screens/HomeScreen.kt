@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,7 +58,8 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onBudgets: () -> Unit,
     onRecurring: () -> Unit,
-    onLoans: () -> Unit
+    onLoans: () -> Unit,
+    onAsk: (Boolean) -> Unit
 ) {
     val s by vm.home.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -85,6 +88,32 @@ fun HomeScreen(
         }
 
         item(key = "hero") { HeroCard(s, today, onBudgets) }
+
+        // Ask KYE: tap to type, mic to speak.
+        item(key = "ask") {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                    .clickable { onAsk(false) }
+                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Ask: how much on Swiggy this month?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1
+                )
+                IconButton(onClick = { onAsk(true) }) {
+                    Icon(Icons.Rounded.Mic, contentDescription = "Ask by voice", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
 
         s.forecast?.let { f -> item(key = "forecast") { ForecastCard(f, today, onBudgets) } }
 
