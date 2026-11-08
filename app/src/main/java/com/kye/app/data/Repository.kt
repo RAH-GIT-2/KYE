@@ -4,6 +4,9 @@ import androidx.room.withTransaction
 import com.kye.app.domain.CsvImport
 import com.kye.app.domain.Dates
 import com.kye.app.domain.Events
+import com.kye.app.domain.GoldSchemes
+import com.kye.app.domain.MonthlyReport
+import com.kye.app.domain.Reports
 import com.kye.app.domain.Loans
 import com.kye.app.domain.Money
 import com.kye.app.domain.Recurrence
@@ -22,6 +25,7 @@ import java.io.OutputStream
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 
 /** A user-facing problem (duplicate name, category still in use…). The message is shown as-is. */
 class UserError(message: String) : Exception(message)
@@ -647,6 +651,74 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
         )
     }
 
+    // ---------- Gold schemes ----------
+
+    val schemes: Flow<List<GoldSchemeRow>> = db.schemeDao().observeAll()
+    fun schemeTxns(schemeId: Long): Flow<List<TxnRow>> = db.schemeDao().observeTxns(schemeId)
+
+    suspend fun saveScheme(s: GoldScheme): Long {
+        val clean = s.copy(name = s.name.trim().replace(Regex("\\s+"), " "), note = s.note.trim())
+        GoldSchemes.check(clean)?.let { throw UserError(it) }
+        val dao = db.schemeDao()
+        return if (s.id == 0L) dao.insert(clean) else {
+            val old = dao.get(s.id)
+            // A changed start date re-arms reminders.
+            dao.update(if (old?.startDate != clean.startDate) clean.copy(lastRemindedFor = null) else clean)
+            s.id
+        }
+    }
+
+    /** Redeemed / stopped (closed), or reopened. */
+    suspend fun setSchemeClosed(id: Long, closed: Boolean, on: LocalDate = LocalDate.now()) {
+        val s = db.schemeDao().get(id) ?: return
+        db.schemeDao().update(s.copy(isClosed = closed, closedOn = if (closed) on.toEpochDay() else null))
+    }
+
+    /** Deletes the scheme only; its instalments stay in history as savings. */
+    suspend fun deleteScheme(id: Long) = db.withTransaction {
+        db.schemeDao().untagAll(id)
+        db.schemeDao().delete(id)
+    }
+
+    /**
+     * Pays an instalment: a Saving entry tagged to the scheme, filed under Savings → "Gold Scheme"
+     * when that subcategory exists (any saving category otherwise).
+     */
+    suspend fun paySchemeInstalment(schemeId: Long, amount: Long, date: LocalDate, payment: PaymentMode): Long {
+        if (amount <= 0) throw UserError("Enter an amount")
+        val s = db.schemeDao().get(schemeId) ?: throw UserError("Scheme not found")
+        val savingCats = categoryDao.allCategories().filter { it.kind == CategoryKind.SAVING }
+        val goldSub = savingCats.flatMap { c -> categoryDao.subsOf(c.id) }
+            .firstOrNull { it.name.equals("Gold Scheme", ignoreCase = true) }
+        val catId = goldSub?.categoryId ?: savingCats.firstOrNull { !it.isArchived }?.id ?: savingCats.firstOrNull()?.id
+        val subId = goldSub?.id ?: catId?.let { defaultSubOf(it) }
+        val time = if (date == LocalDate.now()) LocalTime.now() else LocalTime.NOON
+        return saveTxn(
+            Txn(
+                amountPaise = amount, type = TxnType.SAVING, categoryId = catId, subcategoryId = subId,
+                dateTime = Dates.atMillis(date, time), paymentMode = payment, note = "🪙 ${s.name}", schemeId = schemeId
+            )
+        )
+    }
+
+    /** Schemes with an instalment due today (or missed); each is marked so it isn't reminded twice. */
+    suspend fun schemesToRemind(today: LocalDate): List<GoldSchemeRow> {
+        val dao = db.schemeDao()
+        return db.withTransaction {
+            dao.open().filter { GoldSchemes.shouldRemind(it, today) }.onEach { r ->
+                dao.update(r.scheme.copy(lastRemindedFor = GoldSchemes.nextDue(r)?.toEpochDay()))
+            }
+        }
+    }
+
+    // ---------- Monthly report ----------
+
+    suspend fun monthlyReport(month: YearMonth, today: LocalDate = LocalDate.now()): MonthlyReport {
+        val cats = categoryDao.allCategories().associateBy { it.id }
+        val budgets = budgetDao.all().associate { it.categoryId to it.monthlyLimitPaise }
+        return Reports.build(txnDao.allRows(), month, budgets, cats, today)
+    }
+
     // ---------- Event budgets ----------
 
     val events: Flow<List<EventRow>> = db.eventDao().observeAll()
@@ -763,7 +835,8 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
                 events = backupDao.events(),
                 attachments = backupDao.attachments(),
                 warranties = backupDao.warranties(),
-                goals = backupDao.goals()
+                goals = backupDao.goals(),
+                schemes = backupDao.schemes()
             )
         }
         // A .zip: the data as JSON, plus every receipt photo.
@@ -809,6 +882,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
             backupDao.clearAttachments()
             backupDao.clearWarranties()
             backupDao.clearGoals()
+            backupDao.clearSchemes()
             backupDao.clearLoanPayments()
             backupDao.clearLoans()
             backupDao.clearEvents()
@@ -828,6 +902,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
             backupDao.insertLoanPayments(data.loanPayments)
             backupDao.insertEvents(data.events)
             backupDao.insertGoals(data.goals)
+            backupDao.insertSchemes(data.schemes)
             backupDao.insertAttachments(data.attachments)
             backupDao.insertWarranties(data.warranties)
         }

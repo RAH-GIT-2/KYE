@@ -197,4 +197,41 @@ class ExtrasRepositoryTest {
         assertFalse(File(dir.parentFile, "evil.txt").exists())
         assertFalse(File(dir.parentFile?.parentFile, "evil.txt").exists())
     }
+
+    @Test fun goldSchemeInstalmentsRemindersAndBackup() = runBlocking {
+        repo.ensureSeeded()
+        val start = today.minusMonths(2) // instalments due 2 months ago, last month, today
+        val id = repo.saveScheme(GoldScheme(name = "  GRT  Golden ", monthlyPaise = 5_000_00, months = 11, startDate = start.toEpochDay(), bonusPaise = 5_000_00))
+        assertTrue(runCatching { repo.saveScheme(GoldScheme(name = "x", monthlyPaise = 0, months = 11, startDate = 1)) }.exceptionOrNull() is UserError)
+
+        // An instalment is a Saving entry under Savings → Gold Scheme.
+        repo.paySchemeInstalment(id, 10_000_00, today, PaymentMode.UPI)
+        val entry = repo.transactions.first().single { it.txn.schemeId == id }
+        assertEquals(TxnType.SAVING, entry.txn.type)
+        assertEquals("Gold Scheme", entry.subName)
+        val r = repo.schemes.first().single()
+        assertEquals("GRT Golden", r.scheme.name)
+        assertEquals(2, com.kye.app.domain.GoldSchemes.instalmentsPaid(r))
+
+        // Third instalment is due today: reminded once.
+        assertEquals(1, repo.schemesToRemind(today).size)
+        assertTrue(repo.schemesToRemind(today).isEmpty())
+
+        // Backup round trip keeps the scheme and the tag.
+        val out = ByteArrayOutputStream()
+        repo.exportBackup(out)
+        repo.deleteScheme(id)
+        assertNull(repo.getTxn(entry.txn.id)!!.schemeId)
+        repo.importBackup(ByteArrayInputStream(out.toByteArray()))
+        assertEquals(id, repo.getTxn(entry.txn.id)!!.schemeId)
+        assertEquals(10_000_00L, repo.schemes.first().single().paidPaise)
+
+        // Closing stops reminders.
+        repo.setSchemeClosed(id, true, today)
+        assertTrue(repo.schemesToRemind(today.plusMonths(1)).isEmpty())
+
+        // Monthly report sees the instalment as saving.
+        val report = repo.monthlyReport(java.time.YearMonth.from(today), today)
+        assertEquals(10_000_00L, report.saving)
+    }
 }

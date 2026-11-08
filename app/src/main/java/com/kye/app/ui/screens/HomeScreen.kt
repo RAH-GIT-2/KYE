@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kye.app.domain.Dates
 import com.kye.app.domain.Forecast
+import com.kye.app.domain.GoldSchemes
 import com.kye.app.domain.HomeState
 import com.kye.app.domain.Money
 import com.kye.app.domain.Tone
@@ -74,8 +75,16 @@ fun HomeScreen(
     onLoans: () -> Unit,
     onAsk: (Boolean) -> Unit,
     onEvent: (Long) -> Unit,
-    onGoal: (Long) -> Unit
+    onGoal: (Long) -> Unit,
+    onScheme: (Long) -> Unit
 ) {
+    val schemeRows by vm.schemes.collectAsStateWithLifecycle()
+    // Only schemes that need something soon: an instalment due within 5 days, missed, or ready to redeem.
+    val schemesDue = schemeRows.filter { r ->
+        val now = LocalDate.now()
+        !r.scheme.isClosed && (GoldSchemes.isReadyToRedeem(r, now) ||
+            GoldSchemes.nextDue(r)?.let { !it.isAfter(now.plusDays(5)) } == true)
+    }
     val goalRows by vm.goals.collectAsStateWithLifecycle()
     val openGoals = goalRows.filter { !it.goal.isClosed }.take(3)
     val eventRows by vm.events.collectAsStateWithLifecycle()
@@ -186,6 +195,21 @@ fun HomeScreen(
         }
 
         s.forecast?.let { f -> item(key = "forecast") { ForecastCard(f, today, onBudgets) } }
+
+        if (schemesDue.isNotEmpty()) {
+            item(key = "schemes") {
+                SectionCard(title = "Gold schemes") {
+                    schemesDue.forEachIndexed { i, r ->
+                        if (i > 0) Spacer(Modifier.height(12.dp))
+                        Column(Modifier.fillMaxWidth().clickable { onScheme(r.scheme.id) }) {
+                            Text("🪙 ${r.scheme.name}", style = MaterialTheme.typography.bodyLarge)
+                            Spacer(Modifier.height(4.dp))
+                            SchemeProgress(r, today)
+                        }
+                    }
+                }
+            }
+        }
 
         if (openGoals.isNotEmpty()) {
             item(key = "goals") {

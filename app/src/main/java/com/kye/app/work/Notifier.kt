@@ -14,12 +14,14 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.kye.app.MainActivity
 import com.kye.app.R
+import com.kye.app.data.GoldSchemeRow
 import com.kye.app.data.LoanDirection
 import com.kye.app.data.LoanRow
 import com.kye.app.data.RecurringRule
 import com.kye.app.data.Txn
 import com.kye.app.data.Warranty
 import com.kye.app.domain.Dates
+import com.kye.app.domain.GoldSchemes
 import com.kye.app.domain.Money
 import java.time.LocalDate
 
@@ -28,6 +30,7 @@ object Notifier {
 
     const val CHANNEL_LOANS = "loans"
     const val CHANNEL_WARRANTY = "warranty"
+    const val CHANNEL_SCHEMES = "schemes"
 
     /** "Samsung TV: warranty ends on 7 Nov 2027" (30 days before), then "ends today". */
     @SuppressLint("MissingPermission")
@@ -56,8 +59,39 @@ object Notifier {
         )
     }
 
+    /** "Gold scheme: ₹5,000 due today · instalment 4 of 11". Amounts hidden while app lock is on. */
+    @SuppressLint("MissingPermission")
+    fun showSchemeReminder(context: Context, row: GoldSchemeRow, hideAmounts: Boolean) {
+        if (!canNotify(context)) return
+        val due = GoldSchemes.nextDue(row) ?: return
+        val s = row.scheme
+        val amount = if (hideAmounts) "Instalment" else Money.format(s.monthlyPaise)
+        val whenText = if (due == LocalDate.now()) "due today" else "was due ${Dates.label(due)}"
+        val id = 300_000 + s.id.toInt()
+        val open = PendingIntent.getActivity(
+            context, id,
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        NotificationManagerCompat.from(context).notify(
+            id,
+            NotificationCompat.Builder(context, CHANNEL_SCHEMES)
+                .setSmallIcon(R.drawable.ic_stat_kye)
+                .setContentTitle("🪙 ${s.name}: $amount $whenText")
+                .setContentText("Instalment ${GoldSchemes.instalmentsPaid(row) + 1} of ${s.months} · Settings → Gold schemes → Pay")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+        )
+    }
+
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_SCHEMES, "Gold schemes", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "When a gold scheme instalment is due"
+            }
+        )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_BILLS, "Bill reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Reminders for recurring bills like rent, EB and recharges"

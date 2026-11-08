@@ -86,6 +86,8 @@ import com.kye.app.ui.screens.EventDetailScreen
 import com.kye.app.ui.screens.EventsScreen
 import com.kye.app.ui.screens.GoalDetailScreen
 import com.kye.app.ui.screens.GoalsScreen
+import com.kye.app.ui.screens.GoldSchemeDetailScreen
+import com.kye.app.ui.screens.GoldSchemesScreen
 import com.kye.app.ui.screens.ImportScreen
 import com.kye.app.ui.screens.WarrantiesScreen
 import com.kye.app.ui.screens.LoanDetailScreen
@@ -315,7 +317,8 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onLoans = { nav.navigate("loans") },
                     onAsk = { mic -> nav.navigate("ask?mic=$mic") },
                     onEvent = { nav.navigate("event/$it") },
-                    onGoal = { nav.navigate("goal/$it") }
+                    onGoal = { nav.navigate("goal/$it") },
+                    onScheme = { nav.navigate("scheme/$it") }
                 )
             }
             composable("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
@@ -324,6 +327,13 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 GoalDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
+            }
+            composable("schemes") { GoldSchemesScreen(vm, onOpen = { nav.navigate("scheme/$it") }) { nav.popBackStack() } }
+            composable(
+                "scheme/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { e ->
+                GoldSchemeDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
             composable("warranties") { WarrantiesScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() } }
             composable("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
@@ -383,6 +393,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onLoans = { nav.navigate("loans") },
                     onEvents = { nav.navigate("events") },
                     onGoals = { nav.navigate("goals") },
+                    onSchemes = { nav.navigate("schemes") },
                     onWarranties = { nav.navigate("warranties") }
                 )
             }

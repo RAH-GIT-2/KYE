@@ -70,6 +70,9 @@ Without that file the release build falls back to the debug key, so it still bui
 - **Savings goals** (Settings → Savings goals; Home card): target and optional date, "Add ₹" (saved as a Saving entry, so it counts in savings) or tag Saving entries on the + screen, "Take out" (a transfer). Shows % and how much to save each month to reach it in time.
 - **Backups are now .zip** (data + bill photos), manual and automatic; older .json backups still restore.
 
+- **Gold schemes** (Settings → Gold schemes; Home card when one is due): jeweller, monthly amount, 10/11/12 months, bonus, first due date. "Pay" saves a Saving entry under Savings → Gold Scheme. Shows instalments paid, missed ones, next due, and value at maturity; reminder on each due day; mark redeemed or close early.
+- **Monthly PDF report** (Settings → Monthly report): income, spent, saved, left over, change from last month, spending by category, budgets, payment methods, biggest expenses and every entry. With a backup folder chosen, last month's report is also saved there on the 1st (KYE-report-yyyy-MM.pdf).
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

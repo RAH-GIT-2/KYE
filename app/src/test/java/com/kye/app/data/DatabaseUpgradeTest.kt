@@ -105,6 +105,12 @@ class DatabaseUpgradeTest {
         assertEquals(1, db.txnDao().allRows().first { it.txn.id == 1L }.attachments)
         assertEquals(99_999L, db.txnDao().allRows().first { it.txn.id == 1L }.warrantyUntil)
         assertTrue(db.extrasDao().insertGoal(Goal(name = "Bike", emoji = "🏍️", targetPaise = 1)) > 0)
+
+        // v7 added gold schemes; old entries start untagged.
+        assertEquals(null, db.txnDao().get(1)!!.schemeId)
+        val schemeId = db.schemeDao().insert(GoldScheme(name = "GRT", monthlyPaise = 5_000_00, months = 11, startDate = 1))
+        db.txnDao().insert(Txn(amountPaise = 5_000_00, type = TxnType.SAVING, categoryId = null, subcategoryId = null, dateTime = 5, paymentMode = PaymentMode.UPI, schemeId = schemeId))
+        assertEquals(5_000_00L, db.schemeDao().open().single().paidPaise)
         db.close()
     }
 

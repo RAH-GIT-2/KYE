@@ -15,6 +15,10 @@ import com.kye.app.data.Event
 import com.kye.app.data.EventRow
 import com.kye.app.data.Goal
 import com.kye.app.data.GoalRow
+import com.kye.app.data.GoldScheme
+import com.kye.app.data.GoldSchemeRow
+import com.kye.app.work.PdfReport
+import java.time.YearMonth
 import com.kye.app.data.Receipts
 import com.kye.app.data.WarrantyRow
 import com.kye.app.data.Loan
@@ -170,6 +174,43 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun withdrawFromGoal(goalId: Long, amount: Long, date: LocalDate, available: Long, onError: (String) -> Unit, onDone: () -> Unit) =
         change(onError, onDone) { repo.withdrawFromGoal(goalId, amount, date, available) }
+
+    // ---------- Gold schemes ----------
+
+    val schemes: StateFlow<List<GoldSchemeRow>> = repo.schemes
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun schemeTxns(schemeId: Long) = repo.schemeTxns(schemeId)
+    fun saveScheme(s: GoldScheme, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.saveScheme(s) }
+    fun setSchemeClosed(id: Long, closed: Boolean, onError: (String) -> Unit) = change(onError) { repo.setSchemeClosed(id, closed) }
+    fun deleteScheme(id: Long, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.deleteScheme(id) }
+    fun payScheme(schemeId: Long, amount: Long, date: LocalDate, payment: PaymentMode, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.paySchemeInstalment(schemeId, amount, date, payment) }
+
+    // ---------- Monthly PDF report ----------
+
+    fun exportReport(uri: Uri, month: YearMonth, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    val report = repo.monthlyReport(month)
+                    getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use { PdfReport.write(report, it) }
+                        ?: error("no stream")
+                    if (report.isEmpty) "Saved. There are no entries in that month." else "Report saved"
+                } catch (e: Exception) {
+                    "Couldn't save the report"
+                }
+            }
+            onDone(msg)
+        }
+    }
+
+    fun setMonthlyReport(on: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.setMonthlyReport(on)
+            if (on) AutoBackup.saveReportIfDue(getApplication())
+        }
+    }
 
     val events: StateFlow<List<EventRow>> = repo.events
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

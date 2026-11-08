@@ -55,6 +55,7 @@ open class KyeApp : Application() {
             runRecurringNow()
             // Also on every app open, in case the phone delayed the background job.
             AutoBackup.runIfDue(this@KyeApp)
+            AutoBackup.saveReportIfDue(this@KyeApp)
         }
         // Keep the home-screen widget in step with entries and the app-lock setting.
         container.scope.launch {
@@ -73,6 +74,7 @@ open class KyeApp : Application() {
         val hide = container.prefs.settings.first().appLock
         container.repo.loansToRemind(today).forEach { Notifier.showLoanReminder(this, it, hide) }
         container.repo.warrantiesToRemind(today).forEach { (txn, w) -> Notifier.showWarrantyReminder(this, txn, w) }
+        container.repo.schemesToRemind(today).forEach { Notifier.showSchemeReminder(this, it, hide) }
         container.repo.cleanUpReceipts()
     }
 

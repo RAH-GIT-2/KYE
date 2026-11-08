@@ -16,7 +16,8 @@ data class BackupData(
     val events: List<Event> = emptyList(),
     val attachments: List<Attachment> = emptyList(),
     val warranties: List<Warranty> = emptyList(),
-    val goals: List<Goal> = emptyList()
+    val goals: List<Goal> = emptyList(),
+    val schemes: List<GoldScheme> = emptyList()
 )
 
 /**
@@ -48,7 +49,7 @@ object BackupJson {
                     .put("dateTime", it.dateTime).put("paymentMode", it.paymentMode.name).put("note", it.note)
                     .put("source", it.source.name).putOpt("recurringRuleId", it.recurringRuleId)
                     .putOpt("rawVoiceText", it.rawVoiceText).put("createdAt", it.createdAt).put("updatedAt", it.updatedAt)
-                    .putOpt("eventId", it.eventId).putOpt("goalId", it.goalId)
+                    .putOpt("eventId", it.eventId).putOpt("goalId", it.goalId).putOpt("schemeId", it.schemeId)
             }))
             .put("recurringRules", JSONArray(d.rules.map {
                 JSONObject().put("id", it.id).put("name", it.name).put("amountPaise", it.amountPaise).put("type", it.type.name)
@@ -91,6 +92,12 @@ object BackupJson {
                 JSONObject().put("id", it.id).put("name", it.name).put("emoji", it.emoji).put("targetPaise", it.targetPaise)
                     .putOpt("targetDate", it.targetDate).put("isClosed", it.isClosed).put("createdAt", it.createdAt)
             }))
+            .put("goldSchemes", JSONArray(d.schemes.map {
+                JSONObject().put("id", it.id).put("name", it.name).put("monthlyPaise", it.monthlyPaise)
+                    .put("months", it.months).put("startDate", it.startDate).put("bonusPaise", it.bonusPaise)
+                    .put("remind", it.remind).putOpt("lastRemindedFor", it.lastRemindedFor).put("note", it.note)
+                    .put("isClosed", it.isClosed).putOpt("closedOn", it.closedOn).put("createdAt", it.createdAt)
+            }))
         return root.toString(1)
     }
 
@@ -130,7 +137,8 @@ object BackupJson {
                     recurringRuleId = it.longOrNull("recurringRuleId"), rawVoiceText = it.stringOrNull("rawVoiceText"),
                     createdAt = it.optLong("createdAt"), updatedAt = it.optLong("updatedAt"),
                     eventId = it.longOrNull("eventId"),
-                    goalId = it.longOrNull("goalId")
+                    goalId = it.longOrNull("goalId"),
+                    schemeId = it.longOrNull("schemeId")
                 )
             }
             val rules = root.getJSONArray("recurringRules").objects().map {
@@ -192,10 +200,22 @@ object BackupJson {
                 )
             }
             val goalIds = goals.map { it.id }.toSet()
+            // Gold schemes arrived in v2.4.
+            val schemes = (root.optJSONArray("goldSchemes") ?: JSONArray()).objects().map {
+                GoldScheme(
+                    id = it.getLong("id"), name = it.getString("name"), monthlyPaise = it.getLong("monthlyPaise"),
+                    months = it.getInt("months"), startDate = it.getLong("startDate"), bonusPaise = it.optLong("bonusPaise"),
+                    remind = it.optBoolean("remind", true), lastRemindedFor = it.longOrNull("lastRemindedFor"),
+                    note = it.optString("note"), isClosed = it.optBoolean("isClosed"), closedOn = it.longOrNull("closedOn"),
+                    createdAt = it.optLong("createdAt")
+                )
+            }
+            val schemeIds = schemes.map { it.id }.toSet()
             val txnsChecked = txns.map {
                 it.copy(
                     eventId = it.eventId?.takeIf { id -> id in eventIds },
-                    goalId = it.goalId?.takeIf { id -> id in goalIds }
+                    goalId = it.goalId?.takeIf { id -> id in goalIds },
+                    schemeId = it.schemeId?.takeIf { id -> id in schemeIds }
                 )
             }
             val txnIds = txnsChecked.map { it.id }.toSet()
@@ -208,7 +228,7 @@ object BackupJson {
             if (categories.isEmpty()) throw UserError("This backup has no categories")
             return BackupData(
                 root.optInt("seedVersion", 1), categories, subcategories, txnsChecked, rules, budgets, keywords,
-                loans, loanPayments, events, attachments, warranties, goals
+                loans, loanPayments, events, attachments, warranties, goals, schemes
             )
         } catch (e: UserError) {
             throw e

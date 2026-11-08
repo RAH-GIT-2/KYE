@@ -40,6 +40,12 @@ import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Handshake
 import androidx.compose.material.icons.rounded.Savings
+import androidx.compose.material.icons.rounded.Diamond
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import com.kye.app.domain.Reports
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -97,6 +103,7 @@ fun SettingsScreen(
     onLoans: () -> Unit,
     onEvents: () -> Unit,
     onGoals: () -> Unit,
+    onSchemes: () -> Unit,
     onWarranties: () -> Unit
 ) {
     val context = LocalContext.current
@@ -111,6 +118,18 @@ fun SettingsScreen(
     }
     val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) vm.exportBackup(uri, toast)
+    }
+    var pickingReport by remember { mutableStateOf(false) }
+    var reportMonth by remember { mutableStateOf(YearMonth.now().minusMonths(1)) }
+    val reportSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) vm.exportReport(uri, reportMonth, toast)
+    }
+    if (pickingReport) {
+        ReportMonthDialog(onDismiss = { pickingReport = false }) { m ->
+            pickingReport = false
+            reportMonth = m
+            reportSaver.launch(Reports.fileName(m))
+        }
     }
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
     val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -197,10 +216,14 @@ fun SettingsScreen(
             ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
             ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
             ActionRow(Icons.Rounded.Flag, "Savings goals", "A trip, a bike, a phone: a target, and how much to save each month", onGoals)
+            ActionRow(Icons.Rounded.Diamond, "Gold schemes", "Monthly jewellery schemes: instalments, due-day reminders, maturity", onSchemes)
             ActionRow(Icons.Rounded.VerifiedUser, "Warranties", "Purchases still under warranty, with their bills", onWarranties)
             ActionRow(Icons.Rounded.Celebration, "Events", "Deepavali, a wedding or a trip, each with its own budget", onEvents)
             ActionRow(Icons.Rounded.Handshake, "Lent & borrowed", "Who owes you, whom you owe, part repayments and due-date reminders", onLoans)
             AutoBackupCard(vm)
+            ActionRow(Icons.Rounded.PictureAsPdf, "Monthly report (PDF)", "Income, spending by category, budgets and every entry for a month") {
+                pickingReport = true
+            }
             ActionRow(Icons.Rounded.Backup, "Back up to a file now", "One .zip with everything, bill photos included. Save it to Google Drive.") {
                 backup.launch("KYE-backup-${LocalDate.now()}.zip")
             }
@@ -324,6 +347,18 @@ private fun AutoBackupCard(vm: KyeViewModel) {
         )
 
         if (b.folderUri != null) {
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Monthly PDF report", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "On the 1st, saves last month's report here too (${Reports.fileName(YearMonth.now().minusMonths(1))}). Never deleted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = b.monthlyReport, onCheckedChange = { vm.setMonthlyReport(it) })
+            }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = {
                 busy = true
@@ -334,6 +369,39 @@ private fun AutoBackupCard(vm: KyeViewModel) {
             }, enabled = !busy) { Text(if (busy) "Backing up…" else "Back up now") }
         }
     }
+}
+
+private val REPORT_MONTH: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH)
+
+/** Pick one of the last 12 months for the PDF report. */
+@Composable
+private fun ReportMonthDialog(onDismiss: () -> Unit, onPick: (YearMonth) -> Unit) {
+    val months = remember { Reports.recentMonths(LocalDate.now()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Report for which month?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                months.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { m ->
+                            ChoiceChip(
+                                if (m == YearMonth.now()) "This month" else m.atDay(1).format(REPORT_MONTH),
+                                false, { onPick(m) }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Saved as a PDF wherever you choose, e.g. Downloads or Google Drive.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable

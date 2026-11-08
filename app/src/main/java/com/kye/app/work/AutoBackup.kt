@@ -12,6 +12,7 @@ import com.kye.app.KyeApp
 import com.kye.app.domain.BackupFrequency
 import com.kye.app.domain.BackupSchedule
 import com.kye.app.domain.Dates
+import com.kye.app.domain.Reports
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
@@ -47,7 +48,7 @@ object AutoBackup {
         }
         try {
             val name = BackupSchedule.fileName(LocalDateTime.now())
-            write(context, Uri.parse(folder), name) { out -> app.container.repo.exportBackup(out) }
+            write(context, Uri.parse(folder), name, "application/zip") { out -> app.container.repo.exportBackup(out) }
             prune(context, Uri.parse(folder))
             prefs.recordBackup(System.currentTimeMillis(), auto = true)
             Outcome.Saved(name)
@@ -62,12 +63,52 @@ object AutoBackup {
         }
     }
 
+    /**
+     * On the 1st (or the first run after it), saves last month's PDF report into the backup folder
+     * as KYE-report-yyyy-MM.pdf. Skips a month with no entries and never overwrites a file already
+     * there. Failures are quiet: the next run tries again.
+     */
+    suspend fun saveReportIfDue(context: Context): Boolean = lock.withLock {
+        val app = context.applicationContext as KyeApp
+        val prefs = app.container.prefs
+        val s = prefs.backupSettings()
+        val folder = s.folderUri ?: return@withLock false
+        if (!s.monthlyReport) return@withLock false
+        val month = Reports.monthToSave(prefs.lastReportMonth(), LocalDate.now()) ?: return@withLock false
+        try {
+            val report = app.container.repo.monthlyReport(month)
+            val name = Reports.fileName(month)
+            val tree = Uri.parse(folder)
+            if (!report.isEmpty && name !in childNames(context, tree)) {
+                write(context, tree, name, "application/pdf") { out -> PdfReport.write(report, out) }
+            }
+            prefs.setLastReportMonth(month.toString())
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("KYE", "monthly report not saved", e)
+            false
+        }
+    }
+
+    private fun childNames(context: Context, tree: Uri): Map<String, String> {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val found = HashMap<String, String>() // name → document id
+        context.contentResolver.query(
+            children,
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null, null, null
+        )?.use { c ->
+            while (c.moveToNext()) found[c.getString(1) ?: continue] = c.getString(0)
+        }
+        return found
+    }
+
     private fun folderDoc(tree: Uri): Uri =
         DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
 
-    private suspend fun write(context: Context, tree: Uri, name: String, body: suspend (java.io.OutputStream) -> Unit) {
+    private suspend fun write(context: Context, tree: Uri, name: String, mime: String, body: suspend (java.io.OutputStream) -> Unit) {
         val resolver = context.contentResolver
-        val doc = DocumentsContract.createDocument(resolver, folderDoc(tree), "application/zip", name)
+        val doc = DocumentsContract.createDocument(resolver, folderDoc(tree), mime, name)
             ?: error("folder not writable")
         try {
             resolver.openOutputStream(doc, "wt")?.use { body(it) } ?: error("no stream")
@@ -80,15 +121,7 @@ object AutoBackup {
 
     private fun prune(context: Context, tree: Uri) {
         val resolver = context.contentResolver
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
-        val found = HashMap<String, String>() // name → document id
-        resolver.query(
-            children,
-            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-            null, null, null
-        )?.use { c ->
-            while (c.moveToNext()) found[c.getString(1) ?: continue] = c.getString(0)
-        }
+        val found = childNames(context, tree)
         BackupSchedule.toDelete(found.keys.toList()).forEach { name ->
             runCatching {
                 DocumentsContract.deleteDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, found.getValue(name)))
@@ -116,6 +149,7 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     override suspend fun doWork(): Result {
         val s = (applicationContext as KyeApp).container.prefs.backupSettings()
         if (s.frequency != BackupFrequency.OFF) AutoBackup.runIfDue(applicationContext)
+        AutoBackup.saveReportIfDue(applicationContext)
         // A failure is shown in Settings; retrying every few minutes wouldn't fix a missing folder.
         return Result.success()
     }

@@ -32,7 +32,9 @@ data class BackupSettings(
     val lastAt: Long? = null,
     val lastWasAuto: Boolean = false,
     /** Why the last automatic backup failed; cleared by the next success. */
-    val error: String? = null
+    val error: String? = null,
+    /** Save last month's PDF report into the backup folder on the 1st. */
+    val monthlyReport: Boolean = true
 )
 
 class Prefs(context: Context) {
@@ -48,6 +50,8 @@ class Prefs(context: Context) {
     private val backupLastAt = longPreferencesKey("backup_last_at")
     private val backupLastAuto = booleanPreferencesKey("backup_last_auto")
     private val backupError = stringPreferencesKey("backup_error")
+    private val reportAuto = booleanPreferencesKey("report_auto")
+    private val reportLast = stringPreferencesKey("report_last_month")
 
     val settings: Flow<Settings> = appContext.dataStore.data.map {
         Settings(
@@ -61,7 +65,8 @@ class Prefs(context: Context) {
                 folderUri = it[backupFolder],
                 lastAt = it[backupLastAt],
                 lastWasAuto = it[backupLastAuto] ?: false,
-                error = it[backupError]
+                error = it[backupError],
+                monthlyReport = it[reportAuto] ?: true
             )
         )
     }
@@ -109,6 +114,17 @@ class Prefs(context: Context) {
 
     suspend fun recordBackupError(message: String) {
         appContext.dataStore.edit { it[backupError] = message }
+    }
+
+    suspend fun setMonthlyReport(value: Boolean) {
+        appContext.dataStore.edit { it[reportAuto] = value }
+    }
+
+    /** The last month ("2026-10") whose report was saved automatically. */
+    suspend fun lastReportMonth(): String? = appContext.dataStore.data.first()[reportLast]
+
+    suspend fun setLastReportMonth(month: String) {
+        appContext.dataStore.edit { it[reportLast] = month }
     }
 
     /** Which built-in category set this phone has received. 0 = never recorded. */

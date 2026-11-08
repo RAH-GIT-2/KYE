@@ -65,7 +65,7 @@ data class Subcategory(
     @ColumnInfo(defaultValue = "0") val isDefault: Boolean = false
 )
 
-@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId"), Index("eventId"), Index("goalId")])
+@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId"), Index("eventId"), Index("goalId"), Index("schemeId")])
 data class Txn(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val amountPaise: Long,
@@ -83,7 +83,9 @@ data class Txn(
     /** Event this entry belongs to (Deepavali, a trip…). Still counts in normal spending too. */
     val eventId: Long? = null,
     /** Savings goal this Saving (or withdrawal Transfer) entry belongs to. */
-    val goalId: Long? = null
+    val goalId: Long? = null,
+    /** Gold scheme this Saving entry is an instalment of. */
+    val schemeId: Long? = null
 )
 
 /** A receipt / bill photo, stored privately in the app's files (receipts/<fileName>). */
@@ -133,6 +135,37 @@ data class GoalRow(
 ) {
     val progress: Long get() = (savedPaise - withdrawnPaise).coerceAtLeast(0)
 }
+
+/**
+ * A jeweller's monthly gold savings scheme: pay [monthlyPaise] for [months] months, the jeweller
+ * adds [bonusPaise], and the total is redeemed as jewellery. Instalments are Saving entries tagged
+ * with the scheme. [startDate] is the first instalment's due date (LocalDate.toEpochDay()); later
+ * ones fall due on the same day of each following month.
+ */
+@Entity(tableName = "gold_scheme")
+data class GoldScheme(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val monthlyPaise: Long,
+    val months: Int,
+    val startDate: Long,
+    val bonusPaise: Long = 0,
+    val remind: Boolean = true,
+    /** Due date (epoch day) last reminded about, so each instalment is reminded once. */
+    val lastRemindedFor: Long? = null,
+    val note: String = "",
+    /** Redeemed or stopped: no longer reminded, kept as a record. */
+    val isClosed: Boolean = false,
+    val closedOn: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** A scheme with what's been paid into it so far, and how many entries. */
+data class GoldSchemeRow(
+    @Embedded val scheme: GoldScheme,
+    val paidPaise: Long,
+    val payments: Int
+)
 
 /** An entry with a warranty, for the Warranties list. */
 data class WarrantyRow(

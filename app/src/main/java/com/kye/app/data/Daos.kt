@@ -316,6 +316,37 @@ interface ExtrasDao {
     @Query("UPDATE txn SET goalId = :goalId WHERE id = :txnId") suspend fun tagGoal(txnId: Long, goalId: Long?)
 }
 
+/** Gold savings schemes (v2.4). Instalments are SAVING entries tagged with schemeId. */
+@Dao
+interface SchemeDao {
+    @Query(
+        "SELECT s.*, " +
+            "COALESCE((SELECT SUM(t.amountPaise) FROM txn t WHERE t.schemeId = s.id AND t.type = 'SAVING'), 0) AS paidPaise, " +
+            "(SELECT COUNT(*) FROM txn t WHERE t.schemeId = s.id AND t.type = 'SAVING') AS payments " +
+            "FROM gold_scheme s ORDER BY s.isClosed, s.startDate DESC, s.id DESC"
+    )
+    fun observeAll(): Flow<List<GoldSchemeRow>>
+
+    @Query(
+        "SELECT s.*, " +
+            "COALESCE((SELECT SUM(t.amountPaise) FROM txn t WHERE t.schemeId = s.id AND t.type = 'SAVING'), 0) AS paidPaise, " +
+            "(SELECT COUNT(*) FROM txn t WHERE t.schemeId = s.id AND t.type = 'SAVING') AS payments " +
+            "FROM gold_scheme s WHERE s.isClosed = 0"
+    )
+    suspend fun open(): List<GoldSchemeRow>
+
+    @Query(ROW_SELECT + " WHERE t.schemeId = :schemeId ORDER BY t.dateTime DESC, t.id DESC")
+    fun observeTxns(schemeId: Long): Flow<List<TxnRow>>
+
+    @Query("SELECT * FROM gold_scheme WHERE id = :id") suspend fun get(id: Long): GoldScheme?
+    @Insert suspend fun insert(s: GoldScheme): Long
+    @Update suspend fun update(s: GoldScheme)
+    @Query("DELETE FROM gold_scheme WHERE id = :id") suspend fun delete(id: Long)
+
+    /** Deleting a scheme keeps its instalments as ordinary savings. */
+    @Query("UPDATE txn SET schemeId = NULL WHERE schemeId = :schemeId") suspend fun untagAll(schemeId: Long)
+}
+
 /** Raw table access for JSON backup and restore. */
 @Dao
 interface BackupDao {
@@ -342,6 +373,9 @@ interface BackupDao {
     @Query("DELETE FROM attachment") suspend fun clearAttachments()
     @Query("DELETE FROM warranty") suspend fun clearWarranties()
     @Query("DELETE FROM goal") suspend fun clearGoals()
+    @Query("SELECT * FROM gold_scheme") suspend fun schemes(): List<GoldScheme>
+    @Insert suspend fun insertSchemes(v: List<GoldScheme>)
+    @Query("DELETE FROM gold_scheme") suspend fun clearSchemes()
     @Query("DELETE FROM loan") suspend fun clearLoans()
 
     @Insert suspend fun insertCategories(v: List<Category>)

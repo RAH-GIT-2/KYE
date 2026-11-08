@@ -253,7 +253,9 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             paymentMode = payment,
             note = note.trim(),
             eventId = eventId,
-            goalId = if (type == TxnType.SAVING) goalId else null
+            goalId = if (type == TxnType.SAVING) goalId else null,
+            // A gold scheme instalment stays one only while it's a Saving entry.
+            schemeId = if (type == TxnType.SAVING) old?.schemeId else null
         )
         saved = true
         vm.saveTxnFull(txn, newPhotos, if (type == TxnType.EXPENSE) warranty else null) { msg ->
