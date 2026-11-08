@@ -15,8 +15,8 @@ android {
         applicationId = "com.kye.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.7"
+        versionCode = 9
+        versionName = "1.7.1"
     }
 
     // The release key lives outside the repo. keystore.properties is gitignored; without it the
@@ -64,6 +64,10 @@ android {
         checkReleaseBuilds = false
         abortOnError = false
     }
+    testOptions {
+        // The start-up test needs the app's real theme, layouts and manifest.
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 ksp {
@@ -93,8 +97,11 @@ dependencies {
 
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    // Fingerprint / face / phone-PIN prompt for app lock (brings androidx.fragment for FragmentActivity).
+    // Fingerprint / face / phone-PIN prompt for app lock.
     implementation("androidx.biometric:biometric:1.1.0")
+    // biometric 1.1.0 pulls in fragment 1.2.5 (2020), far older than activity 1.9.3 / lifecycle 2.8.7.
+    // MainActivity is a FragmentActivity, so pin a fragment release built for these versions.
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
@@ -102,4 +109,5 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core-ktx:1.6.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("androidx.work:work-testing:2.10.0")
 }
