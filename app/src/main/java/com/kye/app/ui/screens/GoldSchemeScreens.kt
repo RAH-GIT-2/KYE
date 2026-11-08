@@ -250,6 +250,16 @@ fun GoldSchemeDetailScreen(vm: KyeViewModel, schemeId: Long, onOpenTxn: (Long) -
                     }
                 }
             }
+            if (!s.isClosed && GoldSchemes.overdueCount(r, today) > 0) {
+                item(key = "catch-up") {
+                    Text(
+                        "Paid some of these before adding the scheme? Use Pay and pick the date for each, or, if they're " +
+                            "already Saving entries in KYE, open one and choose this scheme under \"Gold scheme\".",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             item(key = "list-title") {
                 Text(
                     if (rows.isEmpty()) "No instalments yet. Tap Pay when you pay the jeweller." else "Instalments",

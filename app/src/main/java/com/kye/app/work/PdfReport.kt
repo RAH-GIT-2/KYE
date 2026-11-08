@@ -88,7 +88,12 @@ object PdfReport {
 
         fun paint(base: Paint, size: Float, color: Int = Color.BLACK) = Paint(base).apply { textSize = size; this.color = color }
 
-        fun fit(s: String, p: Paint, width: Float): String {
+        /** Emoji (e.g. "🪙 GRT") may not draw in a PDF; drop them, keep ₹ and Tamil text. */
+        fun clean(s: String): String =
+            s.replace(Regex("[\\p{So}\\p{Cs}\\uFE0F\\u200D]"), "").replace(Regex("\\s+"), " ").trim()
+
+        fun fit(raw: String, p: Paint, width: Float): String {
+            val s = clean(raw)
             if (p.measureText(s) <= width) return s
             val n = p.breakText(s, true, width - p.measureText("…"), null)
             return s.take(n.coerceAtLeast(0)) + "…"

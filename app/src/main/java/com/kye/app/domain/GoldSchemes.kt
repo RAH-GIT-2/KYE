@@ -40,10 +40,14 @@ object GoldSchemes {
     fun isReadyToRedeem(r: GoldSchemeRow, today: LocalDate): Boolean =
         !r.scheme.isClosed && isFullyPaid(r) && !today.isBefore(maturityDate(r.scheme))
 
-    /** Remind once per instalment, on its due day (or the first check after it). */
-    fun shouldRemind(r: GoldSchemeRow, today: LocalDate): Boolean {
+    /**
+     * Remind once per instalment, on its due day (or the first check after it). Instalments that fell
+     * due before the scheme was added to KYE aren't reminded: the user is entering an older scheme.
+     */
+    fun shouldRemind(r: GoldSchemeRow, today: LocalDate, addedOn: LocalDate): Boolean {
         if (!r.scheme.remind) return false
         val due = nextDue(r) ?: return false
+        if (due.isBefore(addedOn)) return false
         return !today.isBefore(due) && r.scheme.lastRemindedFor != due.toEpochDay()
     }
 

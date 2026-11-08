@@ -201,7 +201,7 @@ class ExtrasRepositoryTest {
     @Test fun goldSchemeInstalmentsRemindersAndBackup() = runBlocking {
         repo.ensureSeeded()
         val start = today.minusMonths(2) // instalments due 2 months ago, last month, today
-        val id = repo.saveScheme(GoldScheme(name = "  GRT  Golden ", monthlyPaise = 5_000_00, months = 11, startDate = start.toEpochDay(), bonusPaise = 5_000_00))
+        val id = repo.saveScheme(GoldScheme(name = "  GRT  Golden ", monthlyPaise = 5_000_00, months = 11, startDate = start.toEpochDay(), bonusPaise = 5_000_00, createdAt = Dates.atMillis(start, LocalTime.NOON)))
         assertTrue(runCatching { repo.saveScheme(GoldScheme(name = "x", monthlyPaise = 0, months = 11, startDate = 1)) }.exceptionOrNull() is UserError)
 
         // An instalment is a Saving entry under Savings → Gold Scheme.

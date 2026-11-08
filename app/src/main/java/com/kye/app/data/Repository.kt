@@ -705,7 +705,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
     suspend fun schemesToRemind(today: LocalDate): List<GoldSchemeRow> {
         val dao = db.schemeDao()
         return db.withTransaction {
-            dao.open().filter { GoldSchemes.shouldRemind(it, today) }.onEach { r ->
+            dao.open().filter { GoldSchemes.shouldRemind(it, today, Dates.toLocalDate(it.scheme.createdAt)) }.onEach { r ->
                 dao.update(r.scheme.copy(lastRemindedFor = GoldSchemes.nextDue(r)?.toEpochDay()))
             }
         }

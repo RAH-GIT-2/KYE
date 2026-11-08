@@ -26,6 +26,7 @@ import com.kye.app.domain.Warranties
 import com.kye.app.data.Receipts
 import com.kye.app.ui.components.EventChips
 import com.kye.app.ui.components.GoalChips
+import com.kye.app.ui.components.SchemeChips
 import com.kye.app.ui.components.ReceiptItem
 import com.kye.app.ui.components.ReceiptStrip
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -118,6 +119,8 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var eventId by remember { mutableStateOf<Long?>(null) }
     var goalId by remember { mutableStateOf<Long?>(null) }
     val goals by vm.goals.collectAsStateWithLifecycle()
+    var schemeId by remember { mutableStateOf<Long?>(null) }
+    val schemes by vm.schemes.collectAsStateWithLifecycle()
     // Bill photos added in this visit (saved with the entry) and the warranty end date.
     var newPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
     var warranty by remember { mutableStateOf<LocalDate?>(null) }
@@ -209,6 +212,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                 note = t.note
                 eventId = t.eventId
                 goalId = t.goalId
+                schemeId = t.schemeId
                 warranty = vm.warrantyOf(t.id)?.untilDate?.let { LocalDate.ofEpochDay(it) }
             }
         } else {
@@ -255,7 +259,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             eventId = eventId,
             goalId = if (type == TxnType.SAVING) goalId else null,
             // A gold scheme instalment stays one only while it's a Saving entry.
-            schemeId = if (type == TxnType.SAVING) old?.schemeId else null
+            schemeId = if (type == TxnType.SAVING) schemeId else null
         )
         saved = true
         vm.saveTxnFull(txn, newPhotos, if (type == TxnType.EXPENSE) warranty else null) { msg ->
@@ -443,6 +447,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             // Savings goal (Saving entries only).
             if (type == TxnType.SAVING) {
                 GoalChips(goals.filter { !it.goal.isClosed || it.goal.id == goalId }.map { it.goal }, goalId) { goalId = it }
+                SchemeChips(schemes.filter { !it.scheme.isClosed || it.scheme.id == schemeId }.map { it.scheme }, schemeId) { schemeId = it }
             }
 
             // Bill photos.

@@ -118,14 +118,15 @@ fun SettingsScreen(
         if (uri != null) vm.exportBackup(uri, toast)
     }
     var pickingReport by remember { mutableStateOf(false) }
-    var reportMonth by remember { mutableStateOf(YearMonth.now().minusMonths(1)) }
+    // Saveable: the file picker can outlive this screen (rotation, Android reclaiming memory).
+    var reportMonth by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(YearMonth.now().minusMonths(1).toString()) }
     val reportSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        if (uri != null) vm.exportReport(uri, reportMonth, toast)
+        if (uri != null) vm.exportReport(uri, YearMonth.parse(reportMonth), toast)
     }
     if (pickingReport) {
         ReportMonthDialog(onDismiss = { pickingReport = false }) { m ->
             pickingReport = false
-            reportMonth = m
+            reportMonth = m.toString()
             reportSaver.launch(Reports.fileName(m))
         }
     }

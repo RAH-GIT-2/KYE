@@ -194,3 +194,18 @@ fun GoalChips(goals: List<com.kye.app.data.Goal>, selectedId: Long?, onSelect: (
         goals.forEach { g -> ChoiceChip(g.name, selectedId == g.id, { onSelect(if (selectedId == g.id) null else g.id) }, leading = g.emoji) }
     }
 }
+
+/** Gold scheme tag for a Saving entry (an instalment paid outside the scheme page). */
+@Composable
+fun SchemeChips(schemes: List<com.kye.app.data.GoldScheme>, selectedId: Long?, onSelect: (Long?) -> Unit) {
+    if (schemes.isEmpty()) return
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Gold scheme", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ChoiceChip("None", selectedId == null, { onSelect(null) })
+        schemes.forEach { s -> ChoiceChip(s.name, selectedId == s.id, { onSelect(if (selectedId == s.id) null else s.id) }, leading = "🪙") }
+    }
+}

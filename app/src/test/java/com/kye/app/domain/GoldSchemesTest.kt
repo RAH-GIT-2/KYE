@@ -71,13 +71,21 @@ class GoldSchemesTest {
 
     @Test fun remindsOncePerInstalmentOnTheDueDay() {
         val due = LocalDate.of(2026, 9, 5)
-        assertFalse(GoldSchemes.shouldRemind(row(15_000), due.minusDays(1)))
-        assertTrue(GoldSchemes.shouldRemind(row(15_000), due))
-        assertTrue("missed: first check after", GoldSchemes.shouldRemind(row(15_000), due.plusDays(3)))
-        assertFalse(GoldSchemes.shouldRemind(row(15_000, remindedFor = due.toEpochDay()), due.plusDays(1)))
-        assertFalse(GoldSchemes.shouldRemind(row(15_000, remind = false), due))
-        assertFalse(GoldSchemes.shouldRemind(row(55_000), LocalDate.of(2027, 6, 1)))
-        assertFalse(GoldSchemes.shouldRemind(row(15_000, closed = true), due))
+        val added = start
+        assertFalse(GoldSchemes.shouldRemind(row(15_000), due.minusDays(1), added))
+        assertTrue(GoldSchemes.shouldRemind(row(15_000), due, added))
+        assertTrue("missed: first check after", GoldSchemes.shouldRemind(row(15_000), due.plusDays(3), added))
+        assertFalse(GoldSchemes.shouldRemind(row(15_000, remindedFor = due.toEpochDay()), due.plusDays(1), added))
+        assertFalse(GoldSchemes.shouldRemind(row(15_000, remind = false), due, added))
+        assertFalse(GoldSchemes.shouldRemind(row(55_000), LocalDate.of(2027, 6, 1), added))
+        assertFalse(GoldSchemes.shouldRemind(row(15_000, closed = true), due, added))
+    }
+
+    @Test fun noReminderForInstalmentsDueBeforeTheSchemeWasAdded() {
+        // Added to KYE in November for a scheme that started in June: the June instalment isn't nagged.
+        assertFalse(GoldSchemes.shouldRemind(row(0), LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 8)))
+        // Once paid up to date, the next one (5 Dec) is reminded as usual.
+        assertTrue(GoldSchemes.shouldRemind(row(30_000), LocalDate.of(2026, 12, 5), LocalDate.of(2026, 11, 8)))
     }
 
     @Test fun checkRejectsBadInput() {
