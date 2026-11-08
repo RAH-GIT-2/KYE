@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.kye.app.voice.VoiceParser
+import com.kye.app.domain.Events
+import com.kye.app.ui.components.EventChips
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -103,6 +105,8 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var payment by remember { mutableStateOf(PaymentMode.UPI) }
     var note by remember { mutableStateOf("") }
     var splitWays by remember { mutableIntStateOf(1) }
+    var eventId by remember { mutableStateOf<Long?>(null) }
+    val events by vm.events.collectAsStateWithLifecycle()
     var repeat by remember { mutableStateOf(false) }
     var repeatUnit by remember { mutableStateOf(RepeatUnit.MONTH) }
     var repeatEvery by remember { mutableIntStateOf(1) }
@@ -150,8 +154,11 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                 date = Dates.toLocalDate(t.dateTime)
                 payment = t.paymentMode
                 note = t.note
+                eventId = t.eventId
             }
         } else {
+            // A running event is pre-selected; one tap on "None" removes it.
+            eventId = vm.preselectedEvent()?.id
             runCatching { focus.requestFocus() }
         }
     }
@@ -189,7 +196,8 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             subcategoryId = subId,
             dateTime = Dates.atMillis(date, time),
             paymentMode = payment,
-            note = note.trim()
+            note = note.trim(),
+            eventId = eventId
         )
         vm.saveTxn(txn) { msg ->
             if (repeat && old == null) {
@@ -365,6 +373,13 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
 
             Label(if (type == TxnType.INCOME) "Received via" else "Paid with")
             PaymentChips(payment) { payment = it }
+
+            EventChips(
+                events = Events.open(events.map { it.event }),
+                selectedId = eventId,
+                onSelect = { eventId = it },
+                extra = events.firstOrNull { it.event.id == eventId }?.event
+            )
 
             OutlinedTextField(
                 value = note,

@@ -238,6 +238,34 @@ interface LoanDao {
     @Query("DELETE FROM loan_payment WHERE id = :id") suspend fun deletePayment(id: Long)
 }
 
+@Dao
+interface EventDao {
+    @Query(
+        "SELECT e.*, " +
+            "COALESCE((SELECT SUM(t.amountPaise) FROM txn t WHERE t.eventId = e.id AND t.type = 'EXPENSE'), 0) AS spentPaise, " +
+            "(SELECT COUNT(*) FROM txn t WHERE t.eventId = e.id) AS entries " +
+            "FROM event e ORDER BY e.isClosed, e.createdAt DESC"
+    )
+    fun observeAll(): Flow<List<EventRow>>
+
+    @Query(ROW_SELECT + " WHERE t.eventId = :eventId ORDER BY t.dateTime DESC, t.id DESC")
+    fun observeTxns(eventId: Long): Flow<List<TxnRow>>
+
+    @Query("SELECT * FROM event WHERE id = :id") suspend fun get(id: Long): Event?
+
+    @Query("SELECT COALESCE(SUM(amountPaise), 0) FROM txn WHERE eventId = :eventId AND type = 'EXPENSE'")
+    suspend fun spent(eventId: Long): Long
+
+    @Insert suspend fun insert(e: Event): Long
+    @Update suspend fun update(e: Event)
+    @Query("DELETE FROM event WHERE id = :id") suspend fun delete(id: Long)
+
+    /** Deleting an event keeps its entries; they just lose the tag. */
+    @Query("UPDATE txn SET eventId = NULL WHERE eventId = :eventId") suspend fun untagAll(eventId: Long)
+
+    @Query("UPDATE txn SET eventId = :eventId WHERE id = :txnId") suspend fun tag(txnId: Long, eventId: Long?)
+}
+
 /** Raw table access for JSON backup and restore. */
 @Dao
 interface BackupDao {
@@ -252,6 +280,9 @@ interface BackupDao {
     @Insert suspend fun insertLoans(v: List<Loan>)
     @Insert suspend fun insertLoanPayments(v: List<LoanPayment>)
     @Query("DELETE FROM loan_payment") suspend fun clearLoanPayments()
+    @Query("SELECT * FROM event") suspend fun events(): List<Event>
+    @Insert suspend fun insertEvents(v: List<Event>)
+    @Query("DELETE FROM event") suspend fun clearEvents()
     @Query("DELETE FROM loan") suspend fun clearLoans()
 
     @Insert suspend fun insertCategories(v: List<Category>)

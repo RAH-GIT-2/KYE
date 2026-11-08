@@ -11,8 +11,11 @@ import com.kye.app.KyeApp
 import com.kye.app.data.Category
 import com.kye.app.data.CategoryKind
 import com.kye.app.data.KeywordRule
+import com.kye.app.data.Event
+import com.kye.app.data.EventRow
 import com.kye.app.data.Loan
 import com.kye.app.data.LoanRow
+import com.kye.app.domain.Events
 import com.kye.app.domain.Ask
 import com.kye.app.domain.AskAnswer
 import com.kye.app.domain.AskKeyword
@@ -72,7 +75,9 @@ data class VoiceDraft(
     val parsedCategoryId: Long?,
     val parsedSubcategoryId: Long?,
     val matchedPhrase: String?,
-    val raw: String
+    val raw: String,
+    /** Event tag; shown on the card so it can be removed with one tap. */
+    val eventId: Long? = null
 )
 
 class KyeViewModel(app: Application) : AndroidViewModel(app) {
@@ -107,6 +112,19 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     val keywordRules: StateFlow<List<KeywordRule>> = repo.keywordRules
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val events: StateFlow<List<EventRow>> = repo.events
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun eventTxns(eventId: Long) = repo.eventTxns(eventId)
+
+    /** The event a new entry starts tagged with (one tap removes it), or null. */
+    fun preselectedEvent(): Event? = Events.preselect(events.value.map { it.event }, LocalDate.now())
+
+    fun saveEvent(e: Event, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.saveEvent(e) }
+    fun setEventClosed(id: Long, closed: Boolean, onError: (String) -> Unit) = change(onError) { repo.setEventClosed(id, closed) }
+    fun deleteEvent(id: Long, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.deleteEvent(id) }
+    fun tagTxn(txnId: Long, eventId: Long?, onError: (String) -> Unit) = change(onError) { repo.tagTxn(txnId, eventId) }
 
     val loans: StateFlow<List<LoanRow>> = repo.loans
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -261,7 +279,13 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         val family: (Long) -> Long? = { catId ->
             subs.firstOrNull { it.categoryId == catId && it.name.contains("Family") }?.id
         }
-        VoiceParser.parse(text, keywords, family, LocalDate.now()).mapIndexed { i, p -> p.toDraft(i) }
+        val allEvents = events.value.map { it.event }
+        val preselected = Events.preselect(allEvents, LocalDate.now())
+        VoiceParser.parse(text, keywords, family, LocalDate.now()).mapIndexed { i, p ->
+            // "crackers 2000 for deepavali" names the event; otherwise the running event, if any.
+            val named = Events.mentioned(listOfNotNull(p.note, p.matchedPhrase).joinToString(" "), allEvents)
+            p.toDraft(i).copy(eventId = (named ?: preselected)?.id)
+        }
     }
 
     private fun ParsedEntry.toDraft(key: Int) = VoiceDraft(
@@ -297,7 +321,8 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
                         paymentMode = d.paymentMode,
                         note = d.note,
                         source = Source.VOICE,
-                        rawVoiceText = d.raw
+                        rawVoiceText = d.raw,
+                        eventId = d.eventId
                     )
                     val name = d.categoryId?.let { categoryMap.value[it]?.name }
                     repo.saveWithBudgetCheck(txn, name)?.let { messages += it }
@@ -637,6 +662,7 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
                         .filter { choices[it.key] == CatChoice.Create }
                         .map { NewCategory(it.key, it.name, it.kind) }
                     val newKinds = newCats.associate { it.key to it.kind }
+                    val eventsByName = events.value.associate { it.event.name.lowercase() to it.event.id }
 
                     val entries = preview.rows.filter { it.line !in preview.duplicateLines }.map { r ->
                         var catId: Long? = null
@@ -692,7 +718,11 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
                                 dateTime = Dates.atMillis(r.date, LocalTime.of(12, 0)),
                                 paymentMode = r.payment,
                                 note = r.note,
-                                source = Source.IMPORT
+                                source = Source.IMPORT,
+                                // An existing event's name tags the entry; anything else is ignored.
+                                eventId = r.event.takeIf { it.isNotBlank() }?.let { name ->
+                                    eventsByName[name.trim().lowercase()]
+                                }
                             ),
                             newCategoryKey = newCatKey,
                             newSubName = newSub

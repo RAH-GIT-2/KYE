@@ -139,6 +139,7 @@ fun ImportScreen(vm: KyeViewModel, onBack: () -> Unit) {
                     HowRow("Subcategory", "Optional, e.g. Swiggy. New ones are created. Blank: Others.")
                     HowRow("Payment", "UPI, Cash, Debit card, Credit card, Net banking or Wallet. Blank: UPI.")
                     HowRow("Note", "Optional.")
+                    HowRow("Event", "Optional. The name of an event you've created, e.g. Deepavali 2026.")
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "In Excel, use Save As → \"CSV UTF-8\", or Tamil text turns into ????. " +

@@ -21,9 +21,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Budget::class,
         KeywordRule::class,
         Loan::class,
-        LoanPayment::class
+        LoanPayment::class,
+        Event::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class KyeDatabase : RoomDatabase() {
@@ -34,6 +35,7 @@ abstract class KyeDatabase : RoomDatabase() {
     abstract fun keywordDao(): KeywordDao
     abstract fun backupDao(): BackupDao
     abstract fun loanDao(): LoanDao
+    abstract fun eventDao(): EventDao
 
     companion object {
         /** v2: "Others" subcategories get an explicit flag; a detected-payment table (dropped again in v3). Shipped, so never edit. */
@@ -81,7 +83,20 @@ abstract class KyeDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        /** v5: event budgets. Entries get an optional event tag. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `event` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `emoji` TEXT NOT NULL, `budgetPaise` INTEGER, `startDate` INTEGER, " +
+                        "`endDate` INTEGER, `isClosed` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE `txn` ADD COLUMN `eventId` INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_txn_eventId` ON `txn` (`eventId`)")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         fun build(context: Context): KyeDatabase =
             Room.databaseBuilder(context, KyeDatabase::class.java, "kye.db")

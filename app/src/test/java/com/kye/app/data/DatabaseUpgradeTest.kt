@@ -92,6 +92,12 @@ class DatabaseUpgradeTest {
         assertEquals(1_500_00L, db.loanDao().getRow(loanId)!!.remaining)
         db.loanDao().delete(loanId)
         assertTrue(db.backupDao().loanPayments().isEmpty())
+
+        // v5 added events; old entries start untagged and can be tagged.
+        assertEquals(null, db.txnDao().get(1)!!.eventId)
+        val eventId = db.eventDao().insert(Event(name = "Deepavali", emoji = "🪔", budgetPaise = 1_000_00))
+        db.eventDao().tag(1, eventId)
+        assertEquals(450_00L, db.eventDao().spent(eventId))
         db.close()
     }
 

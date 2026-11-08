@@ -12,7 +12,8 @@ data class BackupData(
     val budgets: List<Budget>,
     val keywords: List<KeywordRule>,
     val loans: List<Loan> = emptyList(),
-    val loanPayments: List<LoanPayment> = emptyList()
+    val loanPayments: List<LoanPayment> = emptyList(),
+    val events: List<Event> = emptyList()
 )
 
 /**
@@ -44,6 +45,7 @@ object BackupJson {
                     .put("dateTime", it.dateTime).put("paymentMode", it.paymentMode.name).put("note", it.note)
                     .put("source", it.source.name).putOpt("recurringRuleId", it.recurringRuleId)
                     .putOpt("rawVoiceText", it.rawVoiceText).put("createdAt", it.createdAt).put("updatedAt", it.updatedAt)
+                    .putOpt("eventId", it.eventId)
             }))
             .put("recurringRules", JSONArray(d.rules.map {
                 JSONObject().put("id", it.id).put("name", it.name).put("amountPaise", it.amountPaise).put("type", it.type.name)
@@ -70,6 +72,11 @@ object BackupJson {
             .put("loanPayments", JSONArray(d.loanPayments.map {
                 JSONObject().put("id", it.id).put("loanId", it.loanId).put("amountPaise", it.amountPaise)
                     .put("date", it.date).put("note", it.note)
+            }))
+            .put("events", JSONArray(d.events.map {
+                JSONObject().put("id", it.id).put("name", it.name).put("emoji", it.emoji)
+                    .putOpt("budgetPaise", it.budgetPaise).putOpt("startDate", it.startDate).putOpt("endDate", it.endDate)
+                    .put("isClosed", it.isClosed).put("createdAt", it.createdAt)
             }))
         return root.toString(1)
     }
@@ -108,7 +115,8 @@ object BackupJson {
                     dateTime = it.getLong("dateTime"), paymentMode = enumOr(it.optString("paymentMode"), PaymentMode.UPI),
                     note = it.optString("note"), source = enumOr(it.optString("source"), Source.MANUAL),
                     recurringRuleId = it.longOrNull("recurringRuleId"), rawVoiceText = it.stringOrNull("rawVoiceText"),
-                    createdAt = it.optLong("createdAt"), updatedAt = it.optLong("updatedAt")
+                    createdAt = it.optLong("createdAt"), updatedAt = it.optLong("updatedAt"),
+                    eventId = it.longOrNull("eventId")
                 )
             }
             val rules = root.getJSONArray("recurringRules").objects().map {
@@ -152,8 +160,21 @@ object BackupJson {
                     date = it.getLong("date"), note = it.optString("note")
                 )
             }.filter { it.loanId in loanIds }
+            // Events arrived in v2.2.
+            val events = (root.optJSONArray("events") ?: JSONArray()).objects().map {
+                Event(
+                    id = it.getLong("id"), name = it.getString("name"), emoji = it.optString("emoji", "🎉"),
+                    budgetPaise = it.longOrNull("budgetPaise"), startDate = it.longOrNull("startDate"),
+                    endDate = it.longOrNull("endDate"), isClosed = it.optBoolean("isClosed"), createdAt = it.optLong("createdAt")
+                )
+            }
+            val eventIds = events.map { it.id }.toSet()
+            val txnsChecked = txns.map { if (it.eventId != null && it.eventId !in eventIds) it.copy(eventId = null) else it }
             if (categories.isEmpty()) throw UserError("This backup has no categories")
-            return BackupData(root.optInt("seedVersion", 1), categories, subcategories, txns, rules, budgets, keywords, loans, loanPayments)
+            return BackupData(
+                root.optInt("seedVersion", 1), categories, subcategories, txnsChecked, rules, budgets, keywords,
+                loans, loanPayments, events
+            )
         } catch (e: UserError) {
             throw e
         } catch (e: Exception) {

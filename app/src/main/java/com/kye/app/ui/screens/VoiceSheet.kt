@@ -80,7 +80,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kye.app.domain.Dates
+import com.kye.app.domain.Events
 import com.kye.app.domain.UNCATEGORISED_COLOR
+import com.kye.app.ui.components.EventChips
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.VoiceDraft
 import com.kye.app.ui.components.CategoryAvatar
@@ -205,7 +207,8 @@ fun VoiceSheet(vm: KyeViewModel, onDismiss: () -> Unit) {
                     onPayment = { m -> update(d.key) { it.copy(paymentMode = m) } },
                     onPickCategory = { editingCategoryFor = d.key },
                     onPickDate = { editingDateFor = d.key },
-                    onRemove = { drafts = drafts.filter { it.key != d.key } }
+                    onRemove = { drafts = drafts.filter { it.key != d.key } },
+                    onEvent = { id -> update(d.key) { it.copy(eventId = id) } }
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -303,8 +306,10 @@ private fun DraftCard(
     onPayment: (com.kye.app.data.PaymentMode) -> Unit,
     onPickCategory: () -> Unit,
     onPickDate: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onEvent: (Long?) -> Unit
 ) {
+    val events by vm.events.collectAsStateWithLifecycle()
     val cats by vm.categoryMap.collectAsStateWithLifecycle()
     val subs by vm.subcategories.collectAsStateWithLifecycle()
     val cat = draft.categoryId?.let { cats[it] }
@@ -371,6 +376,7 @@ private fun DraftCard(
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp)
             )
+            EventChips(Events.open(events.map { it.event }), draft.eventId, onEvent)
         }
     }
 }

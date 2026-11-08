@@ -27,6 +27,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.platform.LocalContext
 import com.kye.app.data.TxnRow
+import com.kye.app.domain.Events
+import com.kye.app.ui.components.EventChips
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -59,18 +61,31 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
     var typeFilter by remember { mutableStateOf<TxnType?>(null) }
     var catFilter by remember { mutableStateOf<Long?>(null) }
     var againFor by remember { mutableStateOf<TxnRow?>(null) }
+    val events by vm.events.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Long-press an entry → add the same again for now.
     againFor?.let { row ->
         AlertDialog(
             onDismissRequest = { againFor = null },
-            title = { Text("Add again for now?") },
+            title = { Text(row.title) },
             text = {
-                Text(
-                    listOfNotNull(row.title, Money.format(row.txn.amountPaise, showPaise = true), row.txn.paymentMode.label, row.txn.note.ifBlank { null })
-                        .joinToString(" · ")
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        listOfNotNull(Money.format(row.txn.amountPaise, showPaise = true), row.txn.paymentMode.label, row.txn.note.ifBlank { null })
+                            .joinToString(" · ")
+                    )
+                    // Tag an older entry to an event (or remove the tag).
+                    EventChips(
+                        events = Events.open(events.map { it.event }),
+                        selectedId = row.txn.eventId,
+                        onSelect = { id ->
+                            vm.tagTxn(row.txn.id, id) { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                            againFor = row.copy(txn = row.txn.copy(eventId = id))
+                        },
+                        extra = events.firstOrNull { it.event.id == row.txn.eventId }?.event
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -78,9 +93,9 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
                     vm.addAgain(row.txn) { _, msg ->
                         Toast.makeText(context, msg ?: "Added for today", Toast.LENGTH_SHORT).show()
                     }
-                }) { Text("Add") }
+                }) { Text("Add again for now") }
             },
-            dismissButton = { TextButton(onClick = { againFor = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { againFor = null }) { Text("Close") } }
         )
     }
 

@@ -65,7 +65,7 @@ data class Subcategory(
     @ColumnInfo(defaultValue = "0") val isDefault: Boolean = false
 )
 
-@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId")])
+@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId"), Index("eventId")])
 data class Txn(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val amountPaise: Long,
@@ -79,7 +79,33 @@ data class Txn(
     val recurringRuleId: Long? = null,
     val rawVoiceText: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    /** Event this entry belongs to (Deepavali, a trip…). Still counts in normal spending too. */
+    val eventId: Long? = null
+)
+
+/**
+ * An occasion with its own budget: a festival, wedding, trip, school reopening. Entries are
+ * tagged to it on top of their category. Dates are LocalDate.toEpochDay() values, both optional.
+ */
+@Entity(tableName = "event")
+data class Event(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val emoji: String,
+    val budgetPaise: Long? = null,
+    val startDate: Long? = null,
+    val endDate: Long? = null,
+    /** Marked done: no longer offered when adding entries, kept as a record. */
+    val isClosed: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** An event with what's been spent on it so far. */
+data class EventRow(
+    @Embedded val event: Event,
+    val spentPaise: Long,
+    val entries: Int
 )
 
 /** Dates in a rule are LocalDate.toEpochDay() values. */

@@ -21,7 +21,8 @@ data class ImportRow(
     val category: String,
     val subcategory: String,
     val payment: PaymentMode,
-    val note: String
+    val note: String,
+    val event: String = ""
 )
 
 data class ImportProblem(val line: Int, val message: String)
@@ -35,7 +36,8 @@ data class ImportFile(val rows: List<ImportRow>, val problems: List<ImportProble
  * exports (with Time / Source / "Amount (INR)") import too. Pure Kotlin, unit-tested on the JVM.
  */
 object CsvImport {
-    val HEADER = listOf("Date", "Type", "Amount", "Category", "Subcategory", "Payment", "Note")
+    /** "Event" (v2.2) is optional: an existing event's name tags the entry; leave it blank otherwise. */
+    val HEADER = listOf("Date", "Type", "Amount", "Category", "Subcategory", "Payment", "Note", "Event")
 
     /** Excel needs the byte-order mark to open UTF-8 (Tamil notes) correctly. */
     val BOM: String = Char(0xFEFF).toString()
@@ -74,6 +76,7 @@ object CsvImport {
         val cSub = col("subcategory", "sub category", "sub-category")
         val cPay = col("payment", "payment mode", "paid with")
         val cNote = col("note", "notes", "description")
+        val cEvent = col("event", "occasion")
         if (cDate < 0 || cAmount < 0) {
             throw UserError("The first row must be the header: ${HEADER.joinToString(",")}. Start from the blank template.")
         }
@@ -115,7 +118,8 @@ object CsvImport {
                 category = cell(cCat),
                 subcategory = cell(cSub),
                 payment = payment,
-                note = cell(cNote)
+                note = cell(cNote),
+                event = cell(cEvent)
             )
         }
         return ImportFile(rows, problems)

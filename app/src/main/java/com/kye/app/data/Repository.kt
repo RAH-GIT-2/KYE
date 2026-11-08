@@ -3,6 +3,7 @@ package com.kye.app.data
 import androidx.room.withTransaction
 import com.kye.app.domain.CsvImport
 import com.kye.app.domain.Dates
+import com.kye.app.domain.Events
 import com.kye.app.domain.Loans
 import com.kye.app.domain.Money
 import com.kye.app.domain.Recurrence
@@ -320,6 +321,8 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
 
         val beforeCat = if (catLimit != null) txnDao.sumExpense(from, to, txn.categoryId) else 0L
         val beforeAll = if (overallLimit != null) txnDao.sumExpense(from, to, null) else 0L
+        val event = txn.eventId?.let { db.eventDao().get(it) }
+        val eventBefore = event?.takeIf { it.budgetPaise != null }?.let { db.eventDao().spent(it.id) }
         val id = saveTxn(txn)
         val afterCat = if (catLimit != null) txnDao.sumExpense(from, to, txn.categoryId) else 0L
         val afterAll = if (overallLimit != null) txnDao.sumExpense(from, to, null) else 0L
@@ -335,6 +338,10 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
             crossed(beforeAll, afterAll, overallLimit)?.let {
                 messages += if (it == 100) "Monthly budget exceeded" else "Monthly budget 80% used"
             }
+        }
+        // Event budget, if the entry is tagged to one.
+        if (eventBefore != null && event != null) {
+            Events.alert(event.name, eventBefore, db.eventDao().spent(event.id), event.budgetPaise)?.let { messages += it }
         }
         return id to messages.joinToString("\n").ifBlank { null }
     }
@@ -452,6 +459,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
     /** Same columns as the import template, so an export can be edited and imported again. */
     suspend fun exportCsv(out: OutputStream) {
         val rows = txnDao.allRows()
+        val eventNames = backupDao.events().associate { it.id to it.name }
         out.bufferedWriter(Charsets.UTF_8).use { w ->
             w.write(CsvImport.TEMPLATE)
             rows.forEach { r ->
@@ -463,7 +471,8 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
                     r.catName ?: "",
                     r.specificSub ?: "",
                     t.paymentMode.label,
-                    t.note
+                    t.note,
+                    t.eventId?.let { eventNames[it] } ?: ""
                 )
                 w.write(cells.joinToString(",") { CsvImport.csvCell(it) })
                 w.write("\r\n")
@@ -508,6 +517,36 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
     }
 
     suspend fun undoImport(batch: Long): Int = txnDao.deleteImport(batch)
+
+    // ---------- Event budgets ----------
+
+    val events: Flow<List<EventRow>> = db.eventDao().observeAll()
+    fun eventTxns(eventId: Long): Flow<List<TxnRow>> = db.eventDao().observeTxns(eventId)
+
+    suspend fun saveEvent(e: Event): Long {
+        val name = e.name.trim().replace(Regex("\\s+"), " ")
+        if (name.isEmpty()) throw UserError("Enter a name")
+        if (e.budgetPaise != null && e.budgetPaise <= 0) throw UserError("Budget must be more than zero, or leave it empty")
+        if (e.startDate != null && e.endDate != null && e.endDate < e.startDate) throw UserError("The end date is before the start date")
+        val clean = e.copy(name = name, emoji = e.emoji.ifBlank { "🎉" })
+        return if (e.id == 0L) db.eventDao().insert(clean) else {
+            db.eventDao().update(clean)
+            e.id
+        }
+    }
+
+    suspend fun setEventClosed(id: Long, closed: Boolean) {
+        val e = db.eventDao().get(id) ?: return
+        db.eventDao().update(e.copy(isClosed = closed))
+    }
+
+    /** Deletes the event only; its entries stay, untagged. */
+    suspend fun deleteEvent(id: Long) = db.withTransaction {
+        db.eventDao().untagAll(id)
+        db.eventDao().delete(id)
+    }
+
+    suspend fun tagTxn(txnId: Long, eventId: Long?) = db.eventDao().tag(txnId, eventId)
 
     // ---------- Lent / borrowed ----------
 
@@ -591,7 +630,8 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
                 budgets = backupDao.budgets(),
                 keywords = backupDao.keywords(),
                 loans = backupDao.loans(),
-                loanPayments = backupDao.loanPayments()
+                loanPayments = backupDao.loanPayments(),
+                events = backupDao.events()
             )
         }
         out.bufferedWriter(Charsets.UTF_8).use { it.write(BackupJson.encode(data)) }
@@ -604,6 +644,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
         db.withTransaction {
             backupDao.clearLoanPayments()
             backupDao.clearLoans()
+            backupDao.clearEvents()
             backupDao.clearTxns()
             backupDao.clearRules()
             backupDao.clearBudgets()
@@ -618,6 +659,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
             backupDao.insertKeywords(data.keywords)
             backupDao.insertLoans(data.loans)
             backupDao.insertLoanPayments(data.loanPayments)
+            backupDao.insertEvents(data.events)
         }
         keywordCache = null
         // A backup from an older app version gets any newer built-in categories on top.

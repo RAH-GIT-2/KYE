@@ -63,6 +63,8 @@ Without that file the release build falls back to the debug key, so it still bui
 - **Add again**: things you've added 3+ times in the last 30 days with the same amount appear as one-tap chips on Home ("☕ Tea ₹20"), with Undo. Long-press any entry in History → "Add again for now".
 - **App shortcuts**: long-press the KYE icon for Speak expense, Add entry and Ask KYE (drag them onto the home screen too). "Hey Google, open KYE" works; passing an amount straight from Assistant needs a Play Store app (App Actions).
 
+- **Events** (Settings → Events; Home card while one is on): Deepavali, a wedding, a trip or school reopening, each with an optional budget and dates. While a dated event is on, new entries start tagged to it (visible chip, one tap removes it); "crackers 2000 for deepavali" tags by name; long-press older entries in History to tag them. The event page shows spent vs budget, a category breakdown and its entries, with 80%/100% alerts. Entries still count in normal monthly spending. Mark done to keep it as a record. In backups and the CSV (optional Event column).
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

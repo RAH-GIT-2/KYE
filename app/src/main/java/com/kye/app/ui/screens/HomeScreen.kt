@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.kye.app.ui.components.ChoiceChip
+import com.kye.app.domain.Events
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -71,8 +72,11 @@ fun HomeScreen(
     onBudgets: () -> Unit,
     onRecurring: () -> Unit,
     onLoans: () -> Unit,
-    onAsk: (Boolean) -> Unit
+    onAsk: (Boolean) -> Unit,
+    onEvent: (Long) -> Unit
 ) {
+    val eventRows by vm.events.collectAsStateWithLifecycle()
+    val runningEvents = eventRows.filter { Events.isActive(it.event, LocalDate.now()) }
     val s by vm.home.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val loans by vm.loanSummary.collectAsStateWithLifecycle()
@@ -164,6 +168,17 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // Events on now (Deepavali, a trip…) with their own budget.
+        items(runningEvents, key = { "event-${it.event.id}" }) { r ->
+            SectionCard(
+                title = "${r.event.emoji} ${r.event.name}",
+                subtitle = listOfNotNull("On now", Events.dates(r.event)).joinToString(" · "),
+                trailing = { TextButton(onClick = { onEvent(r.event.id) }) { Text("Open") } }
+            ) {
+                Box(Modifier.fillMaxWidth().clickable { onEvent(r.event.id) }) { EventProgress(r) }
             }
         }
 

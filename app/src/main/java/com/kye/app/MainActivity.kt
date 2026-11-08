@@ -82,6 +82,8 @@ import com.kye.app.ui.screens.CategoriesScreen
 import com.kye.app.ui.screens.CategoryDetailScreen
 import com.kye.app.ui.screens.HistoryScreen
 import com.kye.app.ui.screens.HomeScreen
+import com.kye.app.ui.screens.EventDetailScreen
+import com.kye.app.ui.screens.EventsScreen
 import com.kye.app.ui.screens.ImportScreen
 import com.kye.app.ui.screens.LoanDetailScreen
 import com.kye.app.ui.screens.LoansScreen
@@ -308,8 +310,16 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onBudgets = { nav.navigate("budgets") },
                     onRecurring = { nav.goTab("recurring") },
                     onLoans = { nav.navigate("loans") },
-                    onAsk = { mic -> nav.navigate("ask?mic=$mic") }
+                    onAsk = { mic -> nav.navigate("ask?mic=$mic") },
+                    onEvent = { nav.navigate("event/$it") }
                 )
+            }
+            composable("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
+            composable(
+                "event/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { e ->
+                EventDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
             composable(
                 "ask?mic={mic}",
@@ -358,7 +368,8 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onBudgets = { nav.navigate("budgets") },
                     onCategories = { nav.navigate("categories") },
                     onImport = { nav.navigate("import") },
-                    onLoans = { nav.navigate("loans") }
+                    onLoans = { nav.navigate("loans") },
+                    onEvents = { nav.navigate("events") }
                 )
             }
             composable("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }

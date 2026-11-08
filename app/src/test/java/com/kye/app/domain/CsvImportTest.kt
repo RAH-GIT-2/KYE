@@ -31,6 +31,14 @@ class CsvImportTest {
         assertEquals("biryani", r.note)
     }
 
+    @Test fun eventColumn() {
+        val r = CsvImport.read(header + "01-11-2026,Expense,4500,,,UPI,crackers,Deepavali 2026\n").rows.single()
+        assertEquals("Deepavali 2026", r.event)
+        // Older 7-column files (before events) still read, with no event.
+        val old = CsvImport.read("Date,Type,Amount,Category,Subcategory,Payment,Note\n01-11-2026,Expense,10,,,,\n").rows.single()
+        assertEquals("", old.event)
+    }
+
     @Test fun blanksUseDefaults() {
         val r = CsvImport.read(header + "01/11/2026,,\"1,250.50\",,,,\n").rows.single()
         assertNull(r.type)

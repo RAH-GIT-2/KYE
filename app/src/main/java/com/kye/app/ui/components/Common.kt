@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kye.app.data.Category
+import com.kye.app.data.Event
 import com.kye.app.data.PaymentMode
 import com.kye.app.data.Subcategory
 import com.kye.app.data.TxnRow
@@ -275,6 +276,27 @@ fun CategoryPicker(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * "Event: None · 🪔 Deepavali 2026 · ✈️ Goa trip". Hidden when there are no events.
+ * Tapping the selected one again clears it. [extra] keeps an old tag visible (e.g. a finished event).
+ */
+@Composable
+fun EventChips(events: List<Event>, selectedId: Long?, onSelect: (Long?) -> Unit, extra: Event? = null) {
+    val shown = (events + listOfNotNull(extra?.takeIf { e -> events.none { it.id == e.id } }))
+    if (shown.isEmpty()) return
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Event", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ChoiceChip("None", selectedId == null, { onSelect(null) })
+        shown.forEach { e ->
+            ChoiceChip(e.name, selectedId == e.id, { onSelect(if (selectedId == e.id) null else e.id) }, leading = e.emoji)
         }
     }
 }
