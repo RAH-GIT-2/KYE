@@ -180,4 +180,56 @@ class VoiceParserTest {
         assertEquals(120_000L, VoiceParser.splitShare(120_000, 1))
         assertEquals(33_334L, VoiceParser.splitShare(100_001, 3))
     }
+
+    // ---- Calendar dates (today = Sat 7 Nov 2026) ----
+
+    @Test fun calendarDateWordForms() {
+        val nov2 = LocalDate.of(2026, 11, 2)
+        for (text in listOf("petrol 500 2nd nov", "petrol 500 on 2 november", "petrol 500 nov 2", "petrol 500 November 2nd", "petrol 500 2nd of nov")) {
+            val e = one(text)
+            assertEquals(text, nov2, e.date)
+            assertEquals(text, 50_000L, e.amountPaise)
+            assertEquals(text, "", e.note)
+        }
+    }
+
+    @Test fun calendarDateNumericDayFirst() {
+        assertEquals(LocalDate.of(2026, 11, 2), one("petrol 500 2/11").date)
+        assertEquals(LocalDate.of(2026, 11, 2), one("petrol 500 02-11").date)
+        assertEquals(LocalDate.of(2025, 11, 2), one("petrol 500 2/11/2025").date)
+        assertEquals(LocalDate.of(2025, 11, 2), one("petrol 500 2/11/25").date)
+        assertEquals("", one("petrol 500 2/11").note)
+    }
+
+    @Test fun dayNumberIsNeverTheAmount() {
+        val e = one("tea 15 20th oct")
+        assertEquals(1_500L, e.amountPaise)
+        assertEquals(LocalDate.of(2026, 10, 20), e.date)
+    }
+
+    @Test fun dateWithoutYearIsNeverInTheFuture() {
+        assertEquals(LocalDate.of(2025, 12, 28), one("gift 2000 28 dec").date)
+        assertEquals(LocalDate.of(2026, 11, 7), one("gift 2000 7 nov").date)
+        assertEquals(LocalDate.of(2024, 2, 29), one("gift 2000 29 feb").date)
+        assertEquals(LocalDate.of(2026, 10, 3), one("gift 2000 3 oct 2026").date)
+    }
+
+    @Test fun impossibleDateStaysInTheNote() {
+        val e = one("gift 2000 31 feb")
+        assertEquals(today, e.date)
+        assertEquals(200_000L, e.amountPaise)
+    }
+
+    @Test fun numberAndMonthWithoutOtherAmountIsTheAmount() {
+        val e = one("tea 15 nov")
+        assertEquals(1_500L, e.amountPaise)
+        assertEquals(today, e.date)
+    }
+
+    @Test fun dateAfterAComma() {
+        val r = parse("petrol 500, 2nd nov")
+        assertEquals(1, r.size)
+        assertEquals(LocalDate.of(2026, 11, 2), r[0].date)
+        assertEquals(50_000L, r[0].amountPaise)
+    }
 }

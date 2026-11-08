@@ -107,11 +107,96 @@ object VoiceParser {
 
     private val DIGIT = Regex("^(\\d+(?:\\.\\d+)?)(?:(k|lakhs?|l)(?![a-z]))?")
 
+    private val NUMERIC_DATE = Regex("(?<![\\d.])(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{4}|\\d{2}))?(?![\\d/-])")
+    private val DATE_TOKEN = Regex("^#d(\\d+)m(\\d+)(?:y(\\d+))?$")
+    private val DAY = Regex("^(\\d{1,2})(st|nd|rd|th)?$")
+    private val YEAR = Regex("^(\\d{4})$")
+
+    private val MONTHS: Map<String, Int> = mapOf(
+        "jan" to 1, "january" to 1, "feb" to 2, "february" to 2, "mar" to 3, "march" to 3,
+        "apr" to 4, "april" to 4, "may" to 5, "jun" to 6, "june" to 6, "jul" to 7, "july" to 7,
+        "aug" to 8, "august" to 8, "sep" to 9, "sept" to 9, "september" to 9, "oct" to 10, "october" to 10,
+        "nov" to 11, "november" to 11, "dec" to 12, "december" to 12
+    )
+
+    /** A real date, or null ("31 feb"). Without a year: the latest such date that isn't in the future. */
+    private fun makeDate(day: Int, month: Int, year: Int?, today: LocalDate): LocalDate? {
+        if (month !in 1..12 || day !in 1..31) return null
+        if (year != null) return runCatching { LocalDate.of(year, month, day) }.getOrNull()
+        val thisYear = runCatching { LocalDate.of(today.year, month, day) }.getOrNull()
+        if (thisYear != null && !thisYear.isAfter(today)) return thisYear
+        // Not yet this year (or 29 Feb): last year's, going back to the last year it exists.
+        for (back in 1..8) runCatching { return LocalDate.of(today.year - back, month, day) }
+        return null
+    }
+
+    /**
+     * Finds a calendar date ("2nd nov", "nov 2", "2 of november 2025", "2/11", "02/11/26"), marks its
+     * words as used and returns it. Done before the amount, so "tea 15 20th nov" is ₹15, not ₹20.
+     */
+    private fun findCalendarDate(tokens: List<String>, used: BooleanArray, today: LocalDate): LocalDate? {
+        fun yearAt(i: Int): Int? = tokens.getOrNull(i)?.takeIf { i < used.size && !used[i] }
+            ?.let { YEAR.find(it)?.groupValues?.get(1)?.toInt() }
+            ?.takeIf { it in today.year - 5..today.year + 1 }
+        fun dayAt(i: Int): Int? = tokens.getOrNull(i)?.takeIf { i < used.size && !used[i] }
+            ?.let { DAY.find(it)?.groupValues?.get(1)?.toInt() }
+            ?.takeIf { it in 1..31 }
+
+        for (i in tokens.indices) {
+            if (used[i]) continue
+            // Numeric form, already one token.
+            DATE_TOKEN.find(tokens[i])?.let { m ->
+                val y = m.groupValues[3].takeIf { it.isNotEmpty() }?.toInt()?.let { if (it < 100) 2000 + it else it }
+                val d = makeDate(m.groupValues[1].toInt(), m.groupValues[2].toInt(), y, today)
+                if (d != null) {
+                    used[i] = true
+                    return d
+                }
+            }
+            val month = MONTHS[tokens[i]] ?: continue
+            // "2nd nov", "2 of november"
+            val ofGap = if (i >= 2 && tokens[i - 1] == "of") 1 else 0
+            val before = i - 1 - ofGap
+            dayAt(before)?.let { day ->
+                val year = yearAt(i + 1)
+                makeDate(day, month, year, today)?.let { d ->
+                    (before..i).forEach { used[it] = true }
+                    if (year != null) used[i + 1] = true
+                    return d
+                }
+            }
+            // "nov 2", "november 2nd 2025"
+            dayAt(i + 1)?.let { day ->
+                val year = yearAt(i + 2)
+                makeDate(day, month, year, today)?.let { d ->
+                    used[i] = true
+                    used[i + 1] = true
+                    if (year != null) used[i + 2] = true
+                    return d
+                }
+            }
+        }
+        return null
+    }
+
+    /** Amount in a piece, ignoring any calendar date in it ("2nd nov" is not ₹2). */
+    private fun amountOf(piece: List<String>, today: LocalDate): Amount? {
+        val used = BooleanArray(piece.size)
+        findCalendarDate(piece, used, today)
+        // No fallback here: a piece that is only a date ("…, 2nd nov") joins its neighbour.
+        return findAmount(piece, used)
+    }
+
     // ---------------------------------------------------------------------------------------
 
     fun normalize(input: String): String {
         var x = input.lowercase(Locale.ROOT)
         x = x.replace("₹", " ")
+        // Numeric dates, day first: "2/11", "02-11-2026", "2/11/26" → one token "#d2m11y2026" (kept whole below).
+        x = NUMERIC_DATE.replace(x) { m ->
+            val y = m.groupValues[3]
+            " #d${m.groupValues[1].toInt()}m${m.groupValues[2].toInt()}" + (if (y.isNotEmpty()) "y$y" else "") + " "
+        }
         repeat(3) { x = Regex("(\\d),(\\d)").replace(x, "\$1\$2") }
         x = x.replace("'", "").replace("’", "")
         x = x.replace(Regex("[,;]"), " , ")
@@ -163,10 +248,10 @@ object VoiceParser {
 
         val merged = ArrayList<MutableList<String>>()
         for (p in pieces) {
-            if (findAmount(p, BooleanArray(p.size)) == null && merged.isNotEmpty()) merged.last().addAll(p)
+            if (amountOf(p, today) == null && merged.isNotEmpty()) merged.last().addAll(p)
             else merged += p
         }
-        if (merged.size > 1 && findAmount(merged.first(), BooleanArray(merged.first().size)) == null) {
+        if (merged.size > 1 && amountOf(merged.first(), today) == null) {
             val first = merged.removeAt(0)
             merged[0] = (first + merged[0]).toMutableList()
         }
@@ -305,12 +390,21 @@ object VoiceParser {
 
         // "split 4" must not be read as the amount, so it's found first.
         val ways = splitWays(tokens, used)
-        val amount = findAmount(tokens, used)
+        // A calendar date comes before the amount so its day number is never read as rupees.
+        // If that leaves no amount at all ("tea 15 nov"), the number was the amount after all.
+        val before = used.copyOf()
+        var calendarDate = findCalendarDate(tokens, used, today)
+        var amount = findAmount(tokens, used)
+        if (amount == null && calendarDate != null) {
+            before.copyInto(used)
+            calendarDate = null
+            amount = findAmount(tokens, used)
+        }
         amount?.range?.forEach { used[it] = true }
 
         // Date
-        var date = today
-        run {
+        var date = calendarDate ?: today
+        if (calendarDate == null) run {
             for ((phrase, back) in DATE_PHRASES) {
                 val r = find(tokens, used, phrase.split(' '))
                 if (r != null) {

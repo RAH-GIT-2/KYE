@@ -29,7 +29,7 @@ Without that file the release build falls back to the debug key, so it still bui
 **Database changes.** Bump the version in `KyeDatabase` and add a `Migration`; never wipe. Schemas are exported to `app/schemas/` (commit them). `DatabaseUpgradeTest` checks that a v1 database upgrades with its data intact.
 
 ## What's in v1
-- **Voice entry**: tap the mic and say "Swiggy la 450 biryani", "auto 120 nethu", "EB bill rendu aayiram" or "பால் 60 ரூபாய்". Several items in one sentence work ("petrol 500 and parking 40"). Every entry shows a confirmation card first. When you correct a category, KYE learns that word. You can also type the sentence instead of speaking it.
+- **Voice entry**: tap the mic and say "Swiggy la 450 biryani", "auto 120 nethu", "EB bill rendu aayiram" or "பால் 60 ரூபாய்". Several items in one sentence work ("petrol 500 and parking 40"). Every entry shows a confirmation card first. When you correct a category, KYE learns that word. You can also type the sentence instead of speaking it. Dates: "nethu", "last friday", or a date like "2nd nov", "nov 2", "2/11", "02/11/2026" (day first; without a year, the most recent past date).
 - **Manual entry** with Expense / Saving / Transfer types, categories, subcategories, payment mode, date, note, and "Make this recurring".
 - **18 India-first categories** with subcategories: Swiggy/Zomato, Blinkit/Zepto, Aavin, Jio/Airtel (self/family), Netflix/JioHotstar/Sun NXT, EB/LPG, rent/maid, Amazon/Flipkart/Meesho, moi, chit/SIP and more.
 - **Recurring**: every N days, weeks, months or years. *Auto-add* is for fixed amounts. *Remind me* is for changing bills like EB and sends a notification with Paid/Skip buttons. Missed entries catch up after the phone has been off.
