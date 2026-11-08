@@ -38,9 +38,96 @@ data class MonthlyReport(
         get() = if (previousExpense <= 0) null else (((expense - previousExpense) * 100) / previousExpense).toInt()
 }
 
-/** Builds the monthly report and decides when the automatic one is due. Pure Kotlin, unit-tested. */
+/** One row of the yearly report's month-by-month table. */
+data class MonthTotals(val month: YearMonth, val income: Long, val expense: Long, val saving: Long) {
+    val leftOver: Long get() = income - expense - saving
+}
+
+/**
+ * A year: April–March (financial year, [fy] = true, named by its start year) or January–December.
+ * [key] is "fy2025" / "cy2025", handy for saving the choice.
+ */
+data class ReportYear(val startYear: Int, val fy: Boolean) {
+    val first: YearMonth get() = if (fy) YearMonth.of(startYear, 4) else YearMonth.of(startYear, 1)
+    val months: List<YearMonth> get() = (0L until 12L).map { first.plusMonths(it) }
+    val label: String get() = if (fy) "FY $startYear–${"%02d".format((startYear + 1) % 100)}" else "$startYear"
+    val key: String get() = (if (fy) "fy" else "cy") + startYear
+    val fileName: String get() = if (fy) "KYE-report-FY$startYear-${"%02d".format((startYear + 1) % 100)}.pdf" else "KYE-report-$startYear.pdf"
+    fun previous() = copy(startYear = startYear - 1)
+
+    companion object {
+        fun parse(key: String): ReportYear? {
+            val y = key.drop(2).toIntOrNull() ?: return null
+            return when (key.take(2)) { "fy" -> ReportYear(y, true); "cy" -> ReportYear(y, false); else -> null }
+        }
+
+        /** The current and last financial year, then the current and last calendar year. */
+        fun choices(today: LocalDate): List<ReportYear> {
+            val fy = Dates.fyStart(today).year
+            return listOf(ReportYear(fy, true), ReportYear(fy - 1, true), ReportYear(today.year, false), ReportYear(today.year - 1, false))
+        }
+    }
+}
+
+/** Everything the yearly PDF shows. */
+data class YearlyReport(
+    val year: ReportYear,
+    val months: List<MonthTotals>,
+    val categories: List<ReportLine>,
+    val savings: List<ReportLine>,
+    val payments: List<Pair<PaymentMode, Long>>,
+    val topExpenses: List<TxnRow>,
+    val previousExpense: Long,
+    val entryCount: Int,
+    /** Months counted so far: 12 for a finished year, fewer for the current one. */
+    val monthsSoFar: Int
+) {
+    val income: Long get() = months.sumOf { it.income }
+    val expense: Long get() = months.sumOf { it.expense }
+    val saving: Long get() = months.sumOf { it.saving }
+    val leftOver: Long get() = income - expense - saving
+    val monthlyAverage: Long get() = if (monthsSoFar <= 0) 0 else expense / monthsSoFar
+    val isEmpty: Boolean get() = entryCount == 0
+    val changePercent: Int?
+        get() = if (previousExpense <= 0 || monthsSoFar < 12) null else (((expense - previousExpense) * 100) / previousExpense).toInt()
+}
+
+/** Builds the monthly and yearly reports and decides when the automatic one is due. Pure Kotlin, unit-tested. */
 object Reports {
     const val PREFIX = "KYE-report-"
+
+    fun buildYear(txns: List<TxnRow>, year: ReportYear, cats: Map<Long, Category>, today: LocalDate): YearlyReport {
+        val months = year.months.toSet()
+        fun monthOf(r: TxnRow) = YearMonth.from(Dates.toLocalDate(r.txn.dateTime))
+        val inYear = txns.filter { monthOf(it) in months }
+        val prevMonths = year.previous().months.toSet()
+        val previousExpense = txns.filter { it.txn.type == TxnType.EXPENSE && monthOf(it) in prevMonths }.sumOf { it.txn.amountPaise }
+        val byMonth = inYear.groupBy { monthOf(it) }
+        val rows = year.months.map { m ->
+            val list = byMonth[m].orEmpty()
+            fun sum(t: TxnType) = list.filter { it.txn.type == t }.sumOf { it.txn.amountPaise }
+            MonthTotals(m, sum(TxnType.INCOME), sum(TxnType.EXPENSE), sum(TxnType.SAVING))
+        }
+        fun byCategory(type: TxnType) = inYear.filter { it.txn.type == type }
+            .groupBy { it.txn.categoryId }
+            .map { (id, list) ->
+                ReportLine(id?.let { cats[it]?.name } ?: list.first().catName ?: "Uncategorised", list.sumOf { it.txn.amountPaise }, list.size)
+            }
+            .sortedByDescending { it.amount }
+        val expenses = inYear.filter { it.txn.type == TxnType.EXPENSE }
+        val now = YearMonth.from(today)
+        return YearlyReport(
+            year = year,
+            months = rows,
+            categories = byCategory(TxnType.EXPENSE),
+            savings = byCategory(TxnType.SAVING),
+            payments = expenses.groupBy { it.txn.paymentMode }.map { (m, v) -> m to v.sumOf { it.txn.amountPaise } }.sortedByDescending { it.second },
+            topExpenses = expenses.sortedByDescending { it.txn.amountPaise }.take(10),
+            previousExpense = previousExpense,
+            entryCount = inYear.size,
+            monthsSoFar = year.months.count { !it.isAfter(now) }
+        )
+    }
 
     fun build(
         txns: List<TxnRow>,

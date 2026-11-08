@@ -157,4 +157,65 @@ class ReportsTest {
         assertEquals(12, Reports.recentMonths(today).size)
         assertEquals(YearMonth.of(2026, 11), Reports.recentMonths(today).first())
     }
+
+class YearlyReportTest {
+    private val today = LocalDate.of(2026, 11, 8)
+    private val food = Category(id = 1, name = "Food", emoji = "🍛", color = 0)
+    private val cats = mapOf(1L to food)
+    private var nextId = 1L
+
+    private fun t(rupees: Long, type: TxnType, day: LocalDate) = TxnRow(
+        Txn(id = nextId++, amountPaise = rupees * 100, type = type, categoryId = 1, subcategoryId = null,
+            dateTime = Dates.atMillis(day, LocalTime.NOON), paymentMode = PaymentMode.UPI),
+        catName = "Food", catEmoji = null, catColor = null, subName = null, subIsDefault = null
+    )
+
+    @Test fun yearKeysLabelsAndFileNames() {
+        val fy = ReportYear(2025, true)
+        assertEquals("FY 2025–26", fy.label)
+        assertEquals("KYE-report-FY2025-26.pdf", fy.fileName)
+        assertEquals(YearMonth.of(2025, 4), fy.months.first())
+        assertEquals(YearMonth.of(2026, 3), fy.months.last())
+        assertEquals(fy, ReportYear.parse(fy.key))
+        assertEquals("2026", ReportYear(2026, false).label)
+        assertEquals("KYE-report-2026.pdf", ReportYear(2026, false).fileName)
+        assertEquals("FY 2099–00", ReportYear(2099, true).label)
+        assertNull(ReportYear.parse("xx2025"))
+        assertEquals(
+            listOf(ReportYear(2026, true), ReportYear(2025, true), ReportYear(2026, false), ReportYear(2025, false)),
+            ReportYear.choices(today)
+        )
+    }
+
+    @Test fun financialYearTotalsAndMonthRows() {
+        val txns = listOf(
+            t(50_000, TxnType.INCOME, LocalDate.of(2025, 4, 1)),
+            t(1_000, TxnType.EXPENSE, LocalDate.of(2025, 4, 10)),
+            t(2_000, TxnType.EXPENSE, LocalDate.of(2026, 3, 31)),
+            t(5_000, TxnType.SAVING, LocalDate.of(2025, 12, 1)),
+            t(9_999, TxnType.EXPENSE, LocalDate.of(2026, 4, 1)),  // next FY
+            t(1_500, TxnType.EXPENSE, LocalDate.of(2024, 6, 1))   // previous FY
+        )
+        val r = Reports.buildYear(txns, ReportYear(2025, true), cats, today)
+        assertEquals(12, r.months.size)
+        assertEquals(50_000_00L, r.income)
+        assertEquals(3_000_00L, r.expense)
+        assertEquals(5_000_00L, r.saving)
+        assertEquals(42_000_00L, r.leftOver)
+        assertEquals(1_000_00L, r.months.first().expense)
+        assertEquals(49_000_00L, r.months.first().leftOver)
+        assertEquals(2_000_00L, r.months.last().expense)
+        assertEquals(4, r.entryCount)
+        assertEquals(12, r.monthsSoFar)
+        assertEquals(100, r.changePercent) // 3,000 vs 1,500
+        assertEquals(3_000_00L / 12, r.monthlyAverage)
+        assertEquals(2_000_00L, r.topExpenses.first().txn.amountPaise)
+    }
+
+    @Test fun currentYearCountsMonthsSoFarAndSkipsComparison() {
+        val r = Reports.buildYear(listOf(t(1_000, TxnType.EXPENSE, LocalDate.of(2026, 5, 1))), ReportYear(2026, true), cats, today)
+        assertEquals(8, r.monthsSoFar) // Apr–Nov
+        assertNull(r.changePercent)
+        assertTrue(Reports.buildYear(emptyList(), ReportYear(2026, false), cats, today).isEmpty)
+    }
 }

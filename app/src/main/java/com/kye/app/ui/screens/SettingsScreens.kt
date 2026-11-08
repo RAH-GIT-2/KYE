@@ -121,14 +121,25 @@ fun SettingsScreen(
     }
     var pickingReport by remember { mutableStateOf(false) }
     // Saveable: the file picker can outlive this screen (rotation, Android reclaiming memory).
-    var reportMonth by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(YearMonth.now().minusMonths(1).toString()) }
+    // A month ("2026-10") or a year key ("fy2025", "cy2026").
+    var reportPick by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(YearMonth.now().minusMonths(1).toString()) }
     val reportSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        if (uri != null) vm.exportReport(uri, YearMonth.parse(reportMonth), toast)
+        if (uri != null) {
+            val year = com.kye.app.domain.ReportYear.parse(reportPick)
+            if (year != null) vm.exportYearReport(uri, year, toast) else vm.exportReport(uri, YearMonth.parse(reportPick), toast)
+        }
     }
     if (pickingReport) {
-        ReportMonthDialog(onDismiss = { pickingReport = false }) { m ->
+        ReportMonthDialog(
+            onDismiss = { pickingReport = false },
+            onPickYear = { y ->
+                pickingReport = false
+                reportPick = y.key
+                reportSaver.launch(y.fileName)
+            }
+        ) { m ->
             pickingReport = false
-            reportMonth = m.toString()
+            reportPick = m.toString()
             reportSaver.launch(Reports.fileName(m))
         }
     }
@@ -171,7 +182,7 @@ fun SettingsScreen(
             ActionRow(Icons.Rounded.VerifiedUser, "Warranties", "Purchases still under warranty, with their bills", onWarranties)
             SectionLabel("Your data")
             AutoBackupCard(vm)
-            ActionRow(Icons.Rounded.PictureAsPdf, "Monthly report (PDF)", "Income, spending by category, budgets and every entry for a month") {
+            ActionRow(Icons.Rounded.PictureAsPdf, "Report (PDF)", "A month or a whole year (April–March or Jan–Dec): income, spending, savings") {
                 pickingReport = true
             }
             ActionRow(Icons.Rounded.Backup, "Back up to a file now", "One .zip with everything, bill photos included. Save it to Google Drive.") {
@@ -422,15 +433,23 @@ private fun AutoBackupCard(vm: KyeViewModel) {
 
 private val REPORT_MONTH: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH)
 
-/** Pick one of the last 12 months for the PDF report. */
+/** Pick one of the last 12 months, or a whole year, for the PDF report. */
 @Composable
-private fun ReportMonthDialog(onDismiss: () -> Unit, onPick: (YearMonth) -> Unit) {
+private fun ReportMonthDialog(onDismiss: () -> Unit, onPickYear: (com.kye.app.domain.ReportYear) -> Unit, onPick: (YearMonth) -> Unit) {
     val months = remember { Reports.recentMonths(LocalDate.now()) }
+    val years = remember { com.kye.app.domain.ReportYear.choices(LocalDate.now()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Report for which month?") },
+        title = { Text("Report for which period?") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Whole year", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                years.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { y -> ChoiceChip(y.label, false, { onPickYear(y) }) }
+                    }
+                }
+                Text("Month", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 months.chunked(3).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { m ->

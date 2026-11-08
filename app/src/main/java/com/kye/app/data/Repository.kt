@@ -758,6 +758,11 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
         return Reports.build(txnDao.allRows(), month, budgets, cats, today)
     }
 
+    suspend fun yearlyReport(year: com.kye.app.domain.ReportYear, today: LocalDate = LocalDate.now()): com.kye.app.domain.YearlyReport {
+        val cats = categoryDao.allCategories().associateBy { it.id }
+        return Reports.buildYear(txnDao.allRows(), year, cats, today)
+    }
+
     // ---------- Event budgets ----------
 
     val events: Flow<List<EventRow>> = db.eventDao().observeAll()

@@ -11,6 +11,7 @@ import com.kye.app.domain.Dates
 import com.kye.app.domain.Money
 import com.kye.app.domain.MonthlyReport
 import com.kye.app.domain.ReportLine
+import com.kye.app.domain.YearlyReport
 import java.io.OutputStream
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -43,9 +44,42 @@ object PdfReport {
                 if (report.categories.isNotEmpty()) bars("Where the money went", report.categories, report.expense, ACCENT)
                 if (report.budgets.isNotEmpty()) budgets(report)
                 if (report.savings.isNotEmpty()) bars("Savings", report.savings, report.saving, GREEN)
-                if (report.payments.isNotEmpty()) payments(report)
-                if (report.topExpenses.isNotEmpty()) topExpenses(report)
+                if (report.payments.isNotEmpty()) payments(report.payments)
+                if (report.topExpenses.isNotEmpty()) topExpenses(report.topExpenses)
                 entries(report)
+                finish()
+            }
+            doc.writeTo(out)
+        } finally {
+            doc.close()
+        }
+    }
+
+    private val DAY_YEAR: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yy", Locale.ENGLISH)
+    private val MON: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH)
+
+    /** A year (April–March or January–December): totals, month-by-month table, categories, savings, top expenses. */
+    fun writeYear(report: YearlyReport, out: OutputStream) {
+        val doc = PdfDocument()
+        try {
+            Writer(doc, report.year.label).apply {
+                header("Yearly report", if (report.isEmpty) "No entries in this year." else null)
+                val lines = ArrayList<String>()
+                if (report.expense > 0) {
+                    lines += "Average spend: ${Money.format(report.monthlyAverage)} a month over ${report.monthsSoFar} month" +
+                        if (report.monthsSoFar == 1) "" else "s"
+                }
+                report.changePercent?.let { lines += change(it, report.year.previous().label, report.previousExpense) }
+                if (report.monthsSoFar < 12) lines += "Year in progress: ${report.monthsSoFar} of 12 months so far."
+                boxes(report.income, report.expense, report.saving, report.leftOver, lines)
+                monthTable(report)
+                if (report.categories.isNotEmpty()) bars("Where the money went", report.categories, report.expense, ACCENT)
+                if (report.savings.isNotEmpty()) bars("Savings", report.savings, report.saving, GREEN)
+                if (report.payments.isNotEmpty()) payments(report.payments)
+                if (report.topExpenses.isNotEmpty()) topExpenses(report.topExpenses, DAY_YEAR)
+                need(30f)
+                y += 12f
+                c.drawText("Every entry is in Settings → Export to CSV.", M, y, paint(text, 9f, GREY))
                 finish()
             }
             doc.writeTo(out)
@@ -111,27 +145,44 @@ object PdfReport {
             y += 16f
         }
 
-        fun header(r: MonthlyReport) {
-            c.drawText("Monthly report", M, y + 10f, paint(text, 10f, GREY))
+        fun header(r: MonthlyReport) = header("Monthly report", if (r.isEmpty) "No entries this month." else null)
+
+        fun header(kind: String, emptyNote: String?) {
+            c.drawText(kind, M, y + 10f, paint(text, 10f, GREY))
             y += 36f
             c.drawText(monthLabel, M, y, paint(bold, 24f))
             val made = "Made ${Dates.short(LocalDate.now())}"
             right(made, W - M, y, paint(text, 9f, GREY))
             y += 14f
-            if (r.isEmpty) {
+            if (emptyNote != null) {
                 y += 16f
-                c.drawText("No entries this month.", M, y, paint(text, 11f, GREY))
+                c.drawText(emptyNote, M, y, paint(text, 11f, GREY))
             }
         }
 
         fun summary(r: MonthlyReport) {
+            val lines = ArrayList<String>()
+            if (r.days > 0 && r.expense > 0) lines += "Daily average spend: ${Money.format(r.dailyAverage)} over ${r.days} days"
+            r.changePercent?.let { pct ->
+                lines += change(pct, r.month.minusMonths(1).atDay(1).format(MONTH), r.previousExpense)
+            }
+            boxes(r.income, r.expense, r.saving, r.leftOver, lines)
+        }
+
+        fun change(pct: Int, prev: String, prevAmount: Long) = when {
+            pct > 0 -> "Spent $pct% more than $prev (${Money.format(prevAmount)})"
+            pct < 0 -> "Spent ${abs(pct)}% less than $prev (${Money.format(prevAmount)})"
+            else -> "Spent the same as $prev"
+        }
+
+        fun boxes(income: Long, expense: Long, saving: Long, leftOver: Long, lines: List<String>) {
             y += 12f
             val boxW = (W - 2 * M - 3 * 10f) / 4
             val items = listOf(
-                Triple("Income", r.income, GREEN),
-                Triple("Spent", r.expense, RED),
-                Triple("Saved", r.saving, ACCENT),
-                Triple("Left over", r.leftOver, if (r.leftOver < 0) RED else Color.BLACK)
+                Triple("Income", income, GREEN),
+                Triple("Spent", expense, RED),
+                Triple("Saved", saving, ACCENT),
+                Triple("Left over", leftOver, if (leftOver < 0) RED else Color.BLACK)
             )
             items.forEachIndexed { i, (label, value, color) ->
                 val x = M + i * (boxW + 10f)
@@ -141,20 +192,45 @@ object PdfReport {
                 c.drawText(fit(Money.format(value), paint(bold, 14f), boxW - 16f), x + 10f, y + 40f, paint(bold, 14f, color))
             }
             y += 54f + 18f
-            val lines = ArrayList<String>()
-            if (r.days > 0 && r.expense > 0) lines += "Daily average spend: ${Money.format(r.dailyAverage)} over ${r.days} days"
-            r.changePercent?.let { pct ->
-                val prev = r.month.minusMonths(1).atDay(1).format(MONTH)
-                lines += when {
-                    pct > 0 -> "Spent $pct% more than $prev (${Money.format(r.previousExpense)})"
-                    pct < 0 -> "Spent ${abs(pct)}% less than $prev (${Money.format(r.previousExpense)})"
-                    else -> "Spent the same as $prev"
-                }
-            }
             lines.forEach {
                 c.drawText(it, M, y, paint(text, 10f, GREY))
                 y += 15f
             }
+        }
+
+        /** Month | Income | Spent | Saved | Left over, with a total row. */
+        fun monthTable(r: YearlyReport) {
+            section("Month by month")
+            val cols = floatArrayOf(W - M - 300f, W - M - 200f, W - M - 100f, W - M)
+            val head = paint(bold, 9f, GREY)
+            c.drawText("Month", M, y, head)
+            listOf("Income", "Spent", "Saved", "Left over").forEachIndexed { i, h -> right(h, cols[i], y, head) }
+            y += 16f
+            val now = java.time.YearMonth.now()
+            r.months.forEach { m ->
+                need(16f)
+                val future = m.month.isAfter(now)
+                val p = paint(text, 9.5f, if (future) GREY else Color.BLACK)
+                c.drawText(m.month.atDay(1).format(MON), M, y, p)
+                if (!future) {
+                    right(Money.format(m.income), cols[0], y, paint(text, 9.5f, GREEN))
+                    right(Money.format(m.expense), cols[1], y, p)
+                    right(Money.format(m.saving), cols[2], y, paint(text, 9.5f, ACCENT))
+                    right(Money.format(m.leftOver), cols[3], y, paint(text, 9.5f, if (m.leftOver < 0) RED else Color.BLACK))
+                }
+                y += 16f
+            }
+            need(20f)
+            fill.color = LINE
+            c.drawRect(M, y - 10f, W - M, y - 9f, fill)
+            y += 4f
+            val b = paint(bold, 10f)
+            c.drawText("Total", M, y, b)
+            right(Money.format(r.income), cols[0], y, b)
+            right(Money.format(r.expense), cols[1], y, b)
+            right(Money.format(r.saving), cols[2], y, b)
+            right(Money.format(r.leftOver), cols[3], y, paint(bold, 10f, if (r.leftOver < 0) RED else Color.BLACK))
+            y += 16f
         }
 
         fun bars(title: String, lines: List<ReportLine>, total: Long, color: Int) {
@@ -190,9 +266,9 @@ object PdfReport {
             }
         }
 
-        fun payments(r: MonthlyReport) {
+        fun payments(list: List<Pair<com.kye.app.data.PaymentMode, Long>>) {
             section("Paid by")
-            r.payments.forEach { (mode, amount) ->
+            list.forEach { (mode, amount) ->
                 need(18f)
                 c.drawText(mode.label, M, y, text)
                 right(Money.format(amount), W - M, y, text)
@@ -200,11 +276,11 @@ object PdfReport {
             }
         }
 
-        fun topExpenses(r: MonthlyReport) {
+        fun topExpenses(list: List<com.kye.app.data.TxnRow>, dayFormat: DateTimeFormatter = DAY) {
             section("Biggest expenses")
-            r.topExpenses.forEach { row ->
+            list.forEach { row ->
                 need(18f)
-                c.drawText(Dates.toLocalDate(row.txn.dateTime).format(DAY), M, y, paint(text, 10f, GREY))
+                c.drawText(Dates.toLocalDate(row.txn.dateTime).format(dayFormat), M, y, paint(text, 10f, GREY))
                 val what = listOf(row.title, row.txn.note).filter { it.isNotBlank() }.distinct().joinToString(" · ")
                 c.drawText(fit(what, text, 360f), M + 50f, y, text)
                 right(Money.format(row.txn.amountPaise, showPaise = true), W - M, y, bold)

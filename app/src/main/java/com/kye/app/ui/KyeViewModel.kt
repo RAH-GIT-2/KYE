@@ -206,6 +206,22 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun exportYearReport(uri: Uri, year: com.kye.app.domain.ReportYear, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    val report = repo.yearlyReport(year)
+                    getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use { PdfReport.writeYear(report, it) }
+                        ?: error("no stream")
+                    if (report.isEmpty) "Saved. There are no entries in ${year.label}." else "Report for ${year.label} saved"
+                } catch (e: Exception) {
+                    "Couldn't save the report"
+                }
+            }
+            onDone(msg)
+        }
+    }
+
     fun setMonthlyReport(on: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             prefs.setMonthlyReport(on)
