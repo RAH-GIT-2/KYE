@@ -52,6 +52,9 @@ Without that file the release build falls back to the debug key, so it still bui
 - **Home-screen widget**: today's and this month's spend with + and mic buttons. Amounts are hidden while app lock is on.
 - **Quick-settings tile** "Speak expense": opens KYE straight to the mic from the pull-down panel.
 
+- **Month-end forecast** (Home): spent so far + recurring bills still due + everyday spending at the current pace (last month's pace in the first week). With an overall budget: how far over or under, and how much is left to spend per day after bills.
+- **What stands out** (Home): up to three plain-language notes: a category over or heading over its budget (with the date), big changes vs the same days last month, weekends vs weekdays, the most-used merchant, no-spend days.
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

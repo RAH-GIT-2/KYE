@@ -19,7 +19,9 @@ data class HomeState(
     val today: Long = 0,
     val budget: Long? = null,
     val recent: List<TxnRow> = emptyList(),
-    val upcoming: List<UpcomingBill> = emptyList()
+    val upcoming: List<UpcomingBill> = emptyList(),
+    val forecast: Forecast? = null,
+    val highlights: List<Highlight> = emptyList()
 )
 
 enum class Period(val label: String) {
@@ -112,7 +114,9 @@ object Stats {
             today = todaySum,
             budget = budgets[0L],
             recent = txns.take(8),
-            upcoming = upcoming(rules, cats, today, 30).take(3)
+            upcoming = upcoming(rules, cats, today, 30).take(3),
+            forecast = Insights.forecast(txns, rules, budgets[0L], today),
+            highlights = Insights.highlights(txns, budgets, cats, today)
         )
     }
 

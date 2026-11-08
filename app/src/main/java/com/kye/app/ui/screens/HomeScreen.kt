@@ -33,8 +33,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kye.app.domain.Dates
+import com.kye.app.domain.Forecast
 import com.kye.app.domain.HomeState
 import com.kye.app.domain.Money
+import com.kye.app.domain.Tone
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.components.AnimatedAmount
 import com.kye.app.ui.components.CategoryAvatar
@@ -81,6 +83,29 @@ fun HomeScreen(
         }
 
         item(key = "hero") { HeroCard(s, today, onBudgets) }
+
+        s.forecast?.let { f -> item(key = "forecast") { ForecastCard(f, today, onBudgets) } }
+
+        if (s.highlights.isNotEmpty()) {
+            item(key = "highlights") {
+                SectionCard(title = "What stands out") {
+                    s.highlights.forEach { h ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.Top) {
+                            Text(h.emoji, modifier = Modifier.width(30.dp))
+                            Text(
+                                h.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = when (h.tone) {
+                                    Tone.WARN -> MaterialTheme.colorScheme.tertiary
+                                    Tone.GOOD -> MaterialTheme.colorScheme.secondary
+                                    Tone.NEUTRAL -> MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         if (s.upcoming.isNotEmpty()) {
             item(key = "upcoming") {
@@ -142,6 +167,63 @@ fun HomeScreen(
 
         items(s.recent, key = { it.txn.id }) { row ->
             TxnItem(row, Modifier.animateItem()) { onOpenTxn(row.txn.id) }
+        }
+    }
+}
+
+/** Rounded to the nearest ₹100: a forecast shouldn't look more exact than it is. */
+private fun approx(paise: Long): String = "~" + Money.format((paise + 5_000) / 10_000 * 10_000)
+
+@Composable
+private fun ForecastCard(f: Forecast, today: LocalDate, onBudgets: () -> Unit) {
+    SectionCard(
+        title = "Month-end forecast",
+        subtitle = "At your current pace, plus bills still due",
+        trailing = { if (f.budget == null) TextButton(onClick = onBudgets) { Text("Set budget") } }
+    ) {
+        Text(
+            "${approx(f.total)} by ${Dates.short(f.monthEnd)}",
+            style = MaterialTheme.typography.headlineSmall
+        )
+        Spacer(Modifier.height(4.dp))
+        val parts = listOfNotNull(
+            "${Money.format(f.spentSoFar)} spent",
+            f.billsToCome.takeIf { it > 0 }?.let { "${Money.format(it)} bills to come" },
+            f.projectedEveryday.takeIf { it > 0 }?.let { "${approx(it)} everyday spending" }
+        )
+        Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        val over = f.overBudgetBy
+        val budget = f.budget
+        if (over != null && budget != null) {
+            Spacer(Modifier.height(12.dp))
+            val fraction = (f.total.toFloat() / budget).coerceAtLeast(0f)
+            ProgressBar(
+                fraction,
+                if (over > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+            )
+            Spacer(Modifier.height(8.dp))
+            if (over > 0) {
+                Text(
+                    "${approx(over)} over your ${Money.format(budget)} budget",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                Text(
+                    "Within your ${Money.format(budget)} budget",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+            f.safePerDay(today)?.let { perDay ->
+                Text(
+                    if (perDay > 0) "${Money.format(perDay)} a day left to spend, after bills"
+                    else "Nothing left to spend this month after bills",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
