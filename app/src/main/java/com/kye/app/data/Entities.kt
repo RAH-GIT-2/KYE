@@ -121,6 +121,51 @@ data class KeywordRule(
     val isUserLearned: Boolean = false
 )
 
+enum class LoanDirection { LENT, BORROWED }
+
+/**
+ * Money lent to or borrowed from someone. Kept apart from spending: lending isn't an expense.
+ * Dates are LocalDate.toEpochDay() values.
+ */
+@Entity(tableName = "loan", indices = [Index("person")])
+data class Loan(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val person: String,
+    val direction: LoanDirection,
+    val amountPaise: Long,
+    val date: Long,
+    val dueDate: Long? = null,
+    val note: String = "",
+    /** Fully repaid, or marked settled by the user. */
+    val isClosed: Boolean = false,
+    val lastRemindedOn: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** A part or full repayment of a [Loan]. */
+@Entity(
+    tableName = "loan_payment",
+    foreignKeys = [
+        ForeignKey(entity = Loan::class, parentColumns = ["id"], childColumns = ["loanId"], onDelete = ForeignKey.CASCADE)
+    ],
+    indices = [Index("loanId")]
+)
+data class LoanPayment(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val loanId: Long,
+    val amountPaise: Long,
+    val date: Long,
+    val note: String = ""
+)
+
+/** A loan with how much has been repaid so far. */
+data class LoanRow(
+    @Embedded val loan: Loan,
+    val paidPaise: Long
+) {
+    val remaining: Long get() = (loan.amountPaise - paidPaise).coerceAtLeast(0)
+}
+
 /** A transaction joined with its category and subcategory for display. */
 data class TxnRow(
     @Embedded val txn: Txn,

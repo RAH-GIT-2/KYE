@@ -55,6 +55,8 @@ Without that file the release build falls back to the debug key, so it still bui
 - **Month-end forecast** (Home): spent so far + recurring bills still due + everyday spending at the current pace (last month's pace in the first week). With an overall budget: how far over or under, and how much is left to spend per day after bills.
 - **What stands out** (Home): up to three plain-language notes: a category over or heading over its budget (with the date), big changes vs the same days last month, weekends vs weekdays, the most-used merchant, no-spend days.
 
+- **Lent & borrowed** (Home card and Settings): record money you lent or borrowed, part repayments ("got ₹500 back"), due dates with a reminder on the day and weekly while overdue, and a one-tap polite reminder to send on WhatsApp/SMS. Closes when fully repaid, or mark it settled. Kept apart from spending totals; included in backups.
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

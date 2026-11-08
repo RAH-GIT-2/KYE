@@ -203,6 +203,41 @@ interface KeywordDao {
     suspend fun deleteForCategory(categoryId: Long)
 }
 
+@Dao
+interface LoanDao {
+    @Query(
+        "SELECT l.*, COALESCE((SELECT SUM(p.amountPaise) FROM loan_payment p WHERE p.loanId = l.id), 0) AS paidPaise " +
+            "FROM loan l ORDER BY l.isClosed, COALESCE(l.dueDate, 9999999), l.date DESC"
+    )
+    fun observeAll(): Flow<List<LoanRow>>
+
+    @Query(
+        "SELECT l.*, COALESCE((SELECT SUM(p.amountPaise) FROM loan_payment p WHERE p.loanId = l.id), 0) AS paidPaise " +
+            "FROM loan l WHERE l.id = :id"
+    )
+    suspend fun getRow(id: Long): LoanRow?
+
+    @Query(
+        "SELECT l.*, COALESCE((SELECT SUM(p.amountPaise) FROM loan_payment p WHERE p.loanId = l.id), 0) AS paidPaise " +
+            "FROM loan l WHERE l.isClosed = 0"
+    )
+    suspend fun open(): List<LoanRow>
+
+    @Query("SELECT * FROM loan_payment WHERE loanId = :loanId ORDER BY date DESC, id DESC")
+    fun observePayments(loanId: Long): Flow<List<LoanPayment>>
+
+    @Query("SELECT DISTINCT person FROM loan ORDER BY person COLLATE NOCASE")
+    fun observePeople(): Flow<List<String>>
+
+    @Insert suspend fun insert(loan: Loan): Long
+    @Update suspend fun update(loan: Loan)
+    @Query("DELETE FROM loan WHERE id = :id") suspend fun delete(id: Long) // payments cascade
+
+    @Insert suspend fun insertPayment(p: LoanPayment): Long
+    @Query("SELECT * FROM loan_payment WHERE id = :id") suspend fun getPayment(id: Long): LoanPayment?
+    @Query("DELETE FROM loan_payment WHERE id = :id") suspend fun deletePayment(id: Long)
+}
+
 /** Raw table access for JSON backup and restore. */
 @Dao
 interface BackupDao {
@@ -212,6 +247,12 @@ interface BackupDao {
     @Query("SELECT * FROM recurring_rule") suspend fun rules(): List<RecurringRule>
     @Query("SELECT * FROM budget") suspend fun budgets(): List<Budget>
     @Query("SELECT * FROM keyword_rule") suspend fun keywords(): List<KeywordRule>
+    @Query("SELECT * FROM loan") suspend fun loans(): List<Loan>
+    @Query("SELECT * FROM loan_payment") suspend fun loanPayments(): List<LoanPayment>
+    @Insert suspend fun insertLoans(v: List<Loan>)
+    @Insert suspend fun insertLoanPayments(v: List<LoanPayment>)
+    @Query("DELETE FROM loan_payment") suspend fun clearLoanPayments()
+    @Query("DELETE FROM loan") suspend fun clearLoans()
 
     @Insert suspend fun insertCategories(v: List<Category>)
     @Insert suspend fun insertSubcategories(v: List<Subcategory>)

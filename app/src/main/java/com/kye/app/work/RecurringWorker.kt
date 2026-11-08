@@ -13,9 +13,8 @@ import java.util.concurrent.TimeUnit
 /** Runs daily: posts due auto-add entries and shows bill reminders. Catches up if the phone was off. */
 class RecurringWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        val app = applicationContext as KyeApp
-        val reminders = app.container.repo.processRecurring(LocalDate.now())
-        reminders.forEach { Notifier.showReminder(applicationContext, it) }
+        // Bills and lent/borrowed reminders, same as on app open.
+        (applicationContext as KyeApp).runRecurringNow()
         return Result.success()
     }
 

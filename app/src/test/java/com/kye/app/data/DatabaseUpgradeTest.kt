@@ -61,7 +61,7 @@ class DatabaseUpgradeTest {
         createV1(name)
 
         val db = Room.databaseBuilder(context, KyeDatabase::class.java, name)
-            .addMigrations(KyeDatabase.MIGRATION_1_2, KyeDatabase.MIGRATION_2_3)
+            .addMigrations(*KyeDatabase.ALL_MIGRATIONS)
             .allowMainThreadQueries()
             .build()
 
@@ -85,6 +85,13 @@ class DatabaseUpgradeTest {
                 c.moveToFirst()
                 assertEquals(0, c.getInt(0))
             }
+
+        // v4 added the loan tables; they work, and deleting a loan removes its repayments.
+        val loanId = db.loanDao().insert(Loan(person = "Ramesh", direction = LoanDirection.LENT, amountPaise = 2_000_00, date = 1))
+        db.loanDao().insertPayment(LoanPayment(loanId = loanId, amountPaise = 500_00, date = 2))
+        assertEquals(1_500_00L, db.loanDao().getRow(loanId)!!.remaining)
+        db.loanDao().delete(loanId)
+        assertTrue(db.backupDao().loanPayments().isEmpty())
         db.close()
     }
 

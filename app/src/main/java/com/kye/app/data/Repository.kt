@@ -3,6 +3,8 @@ package com.kye.app.data
 import androidx.room.withTransaction
 import com.kye.app.domain.CsvImport
 import com.kye.app.domain.Dates
+import com.kye.app.domain.Loans
+import com.kye.app.domain.Money
 import com.kye.app.domain.Recurrence
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
@@ -507,6 +509,75 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
 
     suspend fun undoImport(batch: Long): Int = txnDao.deleteImport(batch)
 
+    // ---------- Lent / borrowed ----------
+
+    val loans: Flow<List<LoanRow>> = db.loanDao().observeAll()
+    val loanPeople: Flow<List<String>> = db.loanDao().observePeople()
+    fun loanPayments(loanId: Long): Flow<List<LoanPayment>> = db.loanDao().observePayments(loanId)
+    suspend fun loanRow(id: Long): LoanRow? = db.loanDao().getRow(id)
+
+    /** Adds or edits a loan. The amount can't drop below what's already been repaid. */
+    suspend fun saveLoan(loan: Loan): Long {
+        val person = loan.person.trim().replace(Regex("\\s+"), " ")
+        if (person.isEmpty()) throw UserError("Enter a name")
+        if (loan.amountPaise <= 0) throw UserError("Enter an amount")
+        if (loan.dueDate != null && loan.dueDate < loan.date) throw UserError("The due date is before the date given")
+        val dao = db.loanDao()
+        return db.withTransaction {
+            if (loan.id == 0L) {
+                dao.insert(loan.copy(person = person))
+            } else {
+                val paid = dao.getRow(loan.id)?.paidPaise ?: 0L
+                if (loan.amountPaise < paid) throw UserError("${Money.format(paid)} has already been repaid; the amount can't be less")
+                // A new due date gets its own reminder.
+                val old = dao.getRow(loan.id)?.loan
+                val reminded = if (old?.dueDate != loan.dueDate) null else loan.lastRemindedOn
+                dao.update(loan.copy(person = person, isClosed = Loans.closedAfter(loan, paid), lastRemindedOn = reminded))
+                loan.id
+            }
+        }
+    }
+
+    suspend fun addLoanPayment(loanId: Long, amount: Long, date: LocalDate, note: String) {
+        val dao = db.loanDao()
+        db.withTransaction {
+            val row = dao.getRow(loanId) ?: return@withTransaction
+            Loans.checkPayment(row, amount)?.let { throw UserError(it) }
+            dao.insertPayment(LoanPayment(loanId = loanId, amountPaise = amount, date = date.toEpochDay(), note = note.trim()))
+            if (Loans.closedAfter(row.loan, row.paidPaise + amount)) dao.update(row.loan.copy(isClosed = true))
+        }
+    }
+
+    suspend fun deleteLoanPayment(paymentId: Long) {
+        val dao = db.loanDao()
+        db.withTransaction {
+            val p = dao.getPayment(paymentId) ?: return@withTransaction
+            dao.deletePayment(paymentId)
+            val row = dao.getRow(p.loanId) ?: return@withTransaction
+            if (row.loan.isClosed && row.remaining > 0) dao.update(row.loan.copy(isClosed = false))
+        }
+    }
+
+    /** "Mark as settled" (closed with something left, e.g. forgiven) or reopen. */
+    suspend fun setLoanClosed(loanId: Long, closed: Boolean) {
+        val dao = db.loanDao()
+        val row = dao.getRow(loanId) ?: return
+        if (!closed && row.remaining <= 0) throw UserError("It's fully repaid. Delete a repayment to reopen it.")
+        dao.update(row.loan.copy(isClosed = closed))
+    }
+
+    suspend fun deleteLoan(loanId: Long) = db.loanDao().delete(loanId)
+
+    /** Loans to remind about today; each is marked so it isn't reminded again for a week. */
+    suspend fun loansToRemind(today: LocalDate): List<LoanRow> {
+        val dao = db.loanDao()
+        return db.withTransaction {
+            dao.open().filter { Loans.shouldRemind(it, today) }.onEach {
+                dao.update(it.loan.copy(lastRemindedOn = today.toEpochDay()))
+            }
+        }
+    }
+
     // ---------- Backup & restore ----------
 
     suspend fun exportBackup(out: OutputStream) {
@@ -518,7 +589,9 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
                 txns = backupDao.txns(),
                 rules = backupDao.rules(),
                 budgets = backupDao.budgets(),
-                keywords = backupDao.keywords()
+                keywords = backupDao.keywords(),
+                loans = backupDao.loans(),
+                loanPayments = backupDao.loanPayments()
             )
         }
         out.bufferedWriter(Charsets.UTF_8).use { it.write(BackupJson.encode(data)) }
@@ -529,6 +602,8 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
         val text = input.bufferedReader(Charsets.UTF_8).use { it.readText() }
         val data = BackupJson.decode(text)
         db.withTransaction {
+            backupDao.clearLoanPayments()
+            backupDao.clearLoans()
             backupDao.clearTxns()
             backupDao.clearRules()
             backupDao.clearBudgets()
@@ -541,6 +616,8 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
             backupDao.insertRules(data.rules)
             backupDao.insertBudgets(data.budgets)
             backupDao.insertKeywords(data.keywords)
+            backupDao.insertLoans(data.loans)
+            backupDao.insertLoanPayments(data.loanPayments)
         }
         keywordCache = null
         // A backup from an older app version gets any newer built-in categories on top.

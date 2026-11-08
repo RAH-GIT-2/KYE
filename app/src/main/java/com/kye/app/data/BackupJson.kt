@@ -10,7 +10,9 @@ data class BackupData(
     val txns: List<Txn>,
     val rules: List<RecurringRule>,
     val budgets: List<Budget>,
-    val keywords: List<KeywordRule>
+    val keywords: List<KeywordRule>,
+    val loans: List<Loan> = emptyList(),
+    val loanPayments: List<LoanPayment> = emptyList()
 )
 
 /**
@@ -58,6 +60,16 @@ object BackupJson {
             .put("keywords", JSONArray(d.keywords.map {
                 JSONObject().put("id", it.id).put("phrase", it.phrase).put("categoryId", it.categoryId)
                     .putOpt("subcategoryId", it.subcategoryId).put("weight", it.weight).put("isUserLearned", it.isUserLearned)
+            }))
+            .put("loans", JSONArray(d.loans.map {
+                JSONObject().put("id", it.id).put("person", it.person).put("direction", it.direction.name)
+                    .put("amountPaise", it.amountPaise).put("date", it.date).putOpt("dueDate", it.dueDate)
+                    .put("note", it.note).put("isClosed", it.isClosed).putOpt("lastRemindedOn", it.lastRemindedOn)
+                    .put("createdAt", it.createdAt)
+            }))
+            .put("loanPayments", JSONArray(d.loanPayments.map {
+                JSONObject().put("id", it.id).put("loanId", it.loanId).put("amountPaise", it.amountPaise)
+                    .put("date", it.date).put("note", it.note)
             }))
         return root.toString(1)
     }
@@ -123,8 +135,25 @@ object BackupJson {
                     isUserLearned = it.optBoolean("isUserLearned")
                 )
             }.filter { it.categoryId in catIds }
+            // Loans arrived in v1.9; older backups simply have none.
+            val loans = (root.optJSONArray("loans") ?: JSONArray()).objects().map {
+                Loan(
+                    id = it.getLong("id"), person = it.getString("person"),
+                    direction = enumOr(it.optString("direction"), LoanDirection.LENT),
+                    amountPaise = it.getLong("amountPaise"), date = it.getLong("date"), dueDate = it.longOrNull("dueDate"),
+                    note = it.optString("note"), isClosed = it.optBoolean("isClosed"),
+                    lastRemindedOn = it.longOrNull("lastRemindedOn"), createdAt = it.optLong("createdAt")
+                )
+            }
+            val loanIds = loans.map { it.id }.toSet()
+            val loanPayments = (root.optJSONArray("loanPayments") ?: JSONArray()).objects().map {
+                LoanPayment(
+                    id = it.getLong("id"), loanId = it.getLong("loanId"), amountPaise = it.getLong("amountPaise"),
+                    date = it.getLong("date"), note = it.optString("note")
+                )
+            }.filter { it.loanId in loanIds }
             if (categories.isEmpty()) throw UserError("This backup has no categories")
-            return BackupData(root.optInt("seedVersion", 1), categories, subcategories, txns, rules, budgets, keywords)
+            return BackupData(root.optInt("seedVersion", 1), categories, subcategories, txns, rules, budgets, keywords, loans, loanPayments)
         } catch (e: UserError) {
             throw e
         } catch (e: Exception) {

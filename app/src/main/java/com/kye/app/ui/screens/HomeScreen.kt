@@ -55,10 +55,12 @@ fun HomeScreen(
     onSeeAll: () -> Unit,
     onSettings: () -> Unit,
     onBudgets: () -> Unit,
-    onRecurring: () -> Unit
+    onRecurring: () -> Unit,
+    onLoans: () -> Unit
 ) {
     val s by vm.home.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val loans by vm.loanSummary.collectAsStateWithLifecycle()
     val today = LocalDate.now()
 
     LazyColumn(
@@ -85,6 +87,27 @@ fun HomeScreen(
         item(key = "hero") { HeroCard(s, today, onBudgets) }
 
         s.forecast?.let { f -> item(key = "forecast") { ForecastCard(f, today, onBudgets) } }
+
+        if (loans.open > 0) {
+            item(key = "loans") {
+                SectionCard(
+                    title = "Lent & borrowed",
+                    subtitle = if (loans.overdue > 0) "${loans.overdue} overdue" else null,
+                    trailing = { TextButton(onClick = onLoans) { Text("Open") } }
+                ) {
+                    Row(Modifier.fillMaxWidth().clickable(onClick = onLoans)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("To get back", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(Money.format(loans.toGet), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("To give back", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(Money.format(loans.toGive), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.tertiary)
+                        }
+                    }
+                }
+            }
+        }
 
         if (s.highlights.isNotEmpty()) {
             item(key = "highlights") {

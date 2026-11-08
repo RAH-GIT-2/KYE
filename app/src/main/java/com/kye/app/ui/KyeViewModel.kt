@@ -11,6 +11,10 @@ import com.kye.app.KyeApp
 import com.kye.app.data.Category
 import com.kye.app.data.CategoryKind
 import com.kye.app.data.KeywordRule
+import com.kye.app.data.Loan
+import com.kye.app.data.LoanRow
+import com.kye.app.domain.LoanSummary
+import com.kye.app.domain.Loans
 import com.kye.app.data.UserError
 import com.kye.app.data.ImportEntry
 import com.kye.app.data.NewCategory
@@ -99,6 +103,30 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     val keywordRules: StateFlow<List<KeywordRule>> = repo.keywordRules
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val loans: StateFlow<List<LoanRow>> = repo.loans
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val loanSummary: StateFlow<LoanSummary> = repo.loans
+        .map { Loans.summary(it, LocalDate.now()) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, LoanSummary())
+
+    val loanPeople: StateFlow<List<String>> = repo.loanPeople
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun loanPayments(loanId: Long) = repo.loanPayments(loanId)
+
+    fun saveLoan(loan: Loan, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.saveLoan(loan) }
+
+    fun addLoanPayment(loanId: Long, amount: Long, date: LocalDate, note: String, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.addLoanPayment(loanId, amount, date, note) }
+
+    fun deleteLoanPayment(id: Long, onError: (String) -> Unit) = change(onError) { repo.deleteLoanPayment(id) }
+
+    fun setLoanClosed(id: Long, closed: Boolean, onError: (String) -> Unit) = change(onError) { repo.setLoanClosed(id, closed) }
+
+    fun deleteLoan(id: Long, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.deleteLoan(id) }
 
     /** Includes hidden categories, so old entries and stats still show their real name. */
     val categoryMap: StateFlow<Map<Long, Category>> = repo.allCategories

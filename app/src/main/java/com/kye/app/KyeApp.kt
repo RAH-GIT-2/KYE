@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -66,7 +67,10 @@ open class KyeApp : Application() {
 
     /** Also run on every app open, in case the phone delayed the background job. */
     suspend fun runRecurringNow() {
-        container.repo.processRecurring(LocalDate.now()).forEach { Notifier.showReminder(this, it) }
+        val today = LocalDate.now()
+        container.repo.processRecurring(today).forEach { Notifier.showReminder(this, it) }
+        val hide = container.prefs.settings.first().appLock
+        container.repo.loansToRemind(today).forEach { Notifier.showLoanReminder(this, it, hide) }
     }
 
     /**

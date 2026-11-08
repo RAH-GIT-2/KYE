@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.UploadFile
+import androidx.compose.material.icons.rounded.Handshake
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -84,7 +85,14 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, onCategories: () -> Unit, onImport: () -> Unit) {
+fun SettingsScreen(
+    vm: KyeViewModel,
+    onBack: () -> Unit,
+    onBudgets: () -> Unit,
+    onCategories: () -> Unit,
+    onImport: () -> Unit,
+    onLoans: () -> Unit
+) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val toast: (String) -> Unit = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
@@ -182,6 +190,7 @@ fun SettingsScreen(vm: KyeViewModel, onBack: () -> Unit, onBudgets: () -> Unit, 
             }
             ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
             ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
+            ActionRow(Icons.Rounded.Handshake, "Lent & borrowed", "Who owes you, whom you owe, part repayments and due-date reminders", onLoans)
             AutoBackupCard(vm)
             ActionRow(Icons.Rounded.Backup, "Back up to a file now", "Pick where to save one backup file, e.g. Google Drive. Restore reads these files.") {
                 backup.launch("KYE-backup-${LocalDate.now()}.json")

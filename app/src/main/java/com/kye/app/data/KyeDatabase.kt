@@ -19,9 +19,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Txn::class,
         RecurringRule::class,
         Budget::class,
-        KeywordRule::class
+        KeywordRule::class,
+        Loan::class,
+        LoanPayment::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class KyeDatabase : RoomDatabase() {
@@ -31,6 +33,7 @@ abstract class KyeDatabase : RoomDatabase() {
     abstract fun budgetDao(): BudgetDao
     abstract fun keywordDao(): KeywordDao
     abstract fun backupDao(): BackupDao
+    abstract fun loanDao(): LoanDao
 
     companion object {
         /** v2: "Others" subcategories get an explicit flag; a detected-payment table (dropped again in v3). Shipped, so never edit. */
@@ -58,9 +61,31 @@ abstract class KyeDatabase : RoomDatabase() {
             }
         }
 
+        /** v4: lent / borrowed tracker. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `loan` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`person` TEXT NOT NULL, `direction` TEXT NOT NULL, `amountPaise` INTEGER NOT NULL, " +
+                        "`date` INTEGER NOT NULL, `dueDate` INTEGER, `note` TEXT NOT NULL, `isClosed` INTEGER NOT NULL, " +
+                        "`lastRemindedOn` INTEGER, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_person` ON `loan` (`person`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `loan_payment` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`loanId` INTEGER NOT NULL, `amountPaise` INTEGER NOT NULL, `date` INTEGER NOT NULL, " +
+                        "`note` TEXT NOT NULL, FOREIGN KEY(`loanId`) REFERENCES `loan`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payment_loanId` ON `loan_payment` (`loanId`)")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+
         fun build(context: Context): KyeDatabase =
             Room.databaseBuilder(context, KyeDatabase::class.java, "kye.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(*ALL_MIGRATIONS)
                 .build()
     }
 }

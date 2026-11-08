@@ -82,6 +82,8 @@ import com.kye.app.ui.screens.CategoryDetailScreen
 import com.kye.app.ui.screens.HistoryScreen
 import com.kye.app.ui.screens.HomeScreen
 import com.kye.app.ui.screens.ImportScreen
+import com.kye.app.ui.screens.LoanDetailScreen
+import com.kye.app.ui.screens.LoansScreen
 import com.kye.app.ui.screens.InsightsScreen
 import com.kye.app.ui.screens.RecurringScreen
 import com.kye.app.ui.screens.RuleEditScreen
@@ -301,7 +303,8 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onSeeAll = { nav.goTab("history") },
                     onSettings = { nav.navigate("settings") },
                     onBudgets = { nav.navigate("budgets") },
-                    onRecurring = { nav.goTab("recurring") }
+                    onRecurring = { nav.goTab("recurring") },
+                    onLoans = { nav.navigate("loans") }
                 )
             }
             composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
@@ -340,11 +343,19 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onBack = { nav.popBackStack() },
                     onBudgets = { nav.navigate("budgets") },
                     onCategories = { nav.navigate("categories") },
-                    onImport = { nav.navigate("import") }
+                    onImport = { nav.navigate("import") },
+                    onLoans = { nav.navigate("loans") }
                 )
             }
             composable("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }
             composable("import") { ImportScreen(vm) { nav.popBackStack() } }
+            composable("loans") { LoansScreen(vm, onOpen = { nav.navigate("loan/$it") }) { nav.popBackStack() } }
+            composable(
+                "loan/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { e ->
+                LoanDetailScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
+            }
         }
     }
 
