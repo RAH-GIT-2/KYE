@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,8 @@ import java.time.LocalDate
 fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit) {
     val rules by vm.rules.collectAsStateWithLifecycle()
     val cats by vm.categoryMap.collectAsStateWithLifecycle()
+    val subs by vm.allSubcategories.collectAsStateWithLifecycle()
+    val subMap = remember(subs) { subs.associateBy { it.id } }
     var paying by remember { mutableStateOf<RecurringRule?>(null) }
     val today = LocalDate.now()
     val monthly = rules.filter { it.isActive }.sumOf { Recurrence.monthlyEquivalent(it) }
@@ -112,10 +115,18 @@ fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit) {
                         CategoryAvatar(cat?.emoji ?: "🔁", cat?.color ?: UNCATEGORISED_COLOR, 42.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(rule.name, style = MaterialTheme.typography.titleSmall)
+                            // Same as History: subcategory (or category) on top, the name/note below.
+                            val sub = rule.subcategoryId?.let { subMap[it] }?.takeIf { !it.isDefault }?.name
+                            val title = sub ?: cat?.name ?: rule.name
+                            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             val modeText = if (rule.mode == RecurringMode.AUTO_ADD) "Auto-add" else "Remind me"
                             Text(
-                                "${Recurrence.describe(rule.unit, rule.interval)} · $modeText",
+                                listOfNotNull(
+                                    rule.name.trim().takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) },
+                                    Recurrence.describe(rule.unit, rule.interval),
+                                    modeText
+                                ).joinToString(" · "),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

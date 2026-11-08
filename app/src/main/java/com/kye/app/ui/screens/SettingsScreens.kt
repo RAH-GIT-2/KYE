@@ -148,11 +148,57 @@ fun SettingsScreen(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SettingsCard("Appearance") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (v, label) ->
-                        ChoiceChip(label, (settings?.theme ?: "system") == v, { vm.setTheme(v) })
+            SectionLabel("Money")
+            ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
+            ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
+            ActionRow(Icons.Rounded.Flag, "Savings goals", "A trip, a bike, a phone: a target, and how much to save each month", onGoals)
+            ActionRow(Icons.Rounded.Diamond, "Gold schemes", "Monthly jewellery schemes: instalments, due-day reminders, maturity", onSchemes)
+            ActionRow(Icons.Rounded.Celebration, "Events", "Deepavali, a wedding or a trip, each with its own budget", onEvents)
+            ActionRow(Icons.Rounded.Handshake, "Lent & borrowed", "Who owes you, whom you owe, part repayments and due-date reminders", onLoans)
+            ActionRow(Icons.Rounded.VerifiedUser, "Warranties", "Purchases still under warranty, with their bills", onWarranties)
+            SectionLabel("Your data")
+            AutoBackupCard(vm)
+            ActionRow(Icons.Rounded.PictureAsPdf, "Monthly report (PDF)", "Income, spending by category, budgets and every entry for a month") {
+                pickingReport = true
+            }
+            ActionRow(Icons.Rounded.Backup, "Back up to a file now", "One .zip with everything, bill photos included. Save it to Google Drive.") {
+                backup.launch("KYE-backup-${LocalDate.now()}.zip")
+            }
+            ActionRow(Icons.Rounded.Restore, "Restore from backup", "Replaces everything on this phone with the backup") {
+                restorePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "application/octet-stream", "text/plain"))
+            }
+            ActionRow(Icons.Rounded.UploadFile, "Import from CSV", "Add expenses and income from a spreadsheet. Get the blank template there.", onImport)
+            ActionRow(Icons.Rounded.FileDownload, "Export to CSV", "Same columns as the import template. Opens in Excel or Google Sheets") {
+                exporter.launch("KYE-expenses-${LocalDate.now()}.csv")
+            }
+            SectionLabel("Preferences")
+            SettingsCard("Voice entry") {
+                val voiceOn = settings?.voiceEnabled ?: true
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Show the mic button", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (voiceOn) "On Home, next to +" else "Off · use + to add. Its Quick type box still understands \"swiggy 450 biryani\".",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                    Switch(checked = voiceOn, onCheckedChange = { vm.setVoiceEnabled(it) })
+                }
+                if (voiceOn) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("Language", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChoiceChip("English", (settings?.voiceLang ?: "en-IN") == "en-IN", { vm.setVoiceLang("en-IN") })
+                        ChoiceChip("தமிழ்", settings?.voiceLang == "ta-IN", { vm.setVoiceLang("ta-IN") })
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Tanglish works best in English mode. For Tamil without internet, download the Tamil offline pack in your phone's Google voice settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
             SettingsCard("App lock") {
@@ -183,55 +229,12 @@ fun SettingsScreen(
                     })
                 }
             }
-            SettingsCard("Voice entry") {
-                val voiceOn = settings?.voiceEnabled ?: true
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Show the mic button", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            if (voiceOn) "On Home, next to +" else "Off · use + to add. Its Quick type box still understands \"swiggy 450 biryani\".",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            SettingsCard("Appearance") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (v, label) ->
+                        ChoiceChip(label, (settings?.theme ?: "system") == v, { vm.setTheme(v) })
                     }
-                    Switch(checked = voiceOn, onCheckedChange = { vm.setVoiceEnabled(it) })
                 }
-                if (voiceOn) {
-                    Spacer(Modifier.height(12.dp))
-                    Text("Language", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChoiceChip("English", (settings?.voiceLang ?: "en-IN") == "en-IN", { vm.setVoiceLang("en-IN") })
-                        ChoiceChip("தமிழ்", settings?.voiceLang == "ta-IN", { vm.setVoiceLang("ta-IN") })
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Tanglish works best in English mode. For Tamil without internet, download the Tamil offline pack in your phone's Google voice settings.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
-            ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
-            ActionRow(Icons.Rounded.Flag, "Savings goals", "A trip, a bike, a phone: a target, and how much to save each month", onGoals)
-            ActionRow(Icons.Rounded.Diamond, "Gold schemes", "Monthly jewellery schemes: instalments, due-day reminders, maturity", onSchemes)
-            ActionRow(Icons.Rounded.VerifiedUser, "Warranties", "Purchases still under warranty, with their bills", onWarranties)
-            ActionRow(Icons.Rounded.Celebration, "Events", "Deepavali, a wedding or a trip, each with its own budget", onEvents)
-            ActionRow(Icons.Rounded.Handshake, "Lent & borrowed", "Who owes you, whom you owe, part repayments and due-date reminders", onLoans)
-            AutoBackupCard(vm)
-            ActionRow(Icons.Rounded.PictureAsPdf, "Monthly report (PDF)", "Income, spending by category, budgets and every entry for a month") {
-                pickingReport = true
-            }
-            ActionRow(Icons.Rounded.Backup, "Back up to a file now", "One .zip with everything, bill photos included. Save it to Google Drive.") {
-                backup.launch("KYE-backup-${LocalDate.now()}.zip")
-            }
-            ActionRow(Icons.Rounded.Restore, "Restore from backup", "Replaces everything on this phone with the backup") {
-                restorePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "application/octet-stream", "text/plain"))
-            }
-            ActionRow(Icons.Rounded.UploadFile, "Import from CSV", "Add expenses and income from a spreadsheet. Get the blank template there.", onImport)
-            ActionRow(Icons.Rounded.FileDownload, "Export to CSV", "Same columns as the import template. Opens in Excel or Google Sheets") {
-                exporter.launch("KYE-expenses-${LocalDate.now()}.csv")
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -400,6 +403,17 @@ private fun ReportMonthDialog(onDismiss: () -> Unit, onPick: (YearMonth) -> Unit
         },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/** A small heading between groups of settings ("Money", "Your data", "Preferences"). */
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp, top = 6.dp)
     )
 }
 
