@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.MediaStore
 import com.kye.app.data.KyeDatabase
 import com.kye.app.data.Prefs
+import com.kye.app.data.Receipts
 import com.kye.app.data.Repository
 import com.kye.app.work.AutoBackup
 import com.kye.app.work.KyeWidget
@@ -30,7 +31,7 @@ import java.time.format.DateTimeFormatter
 class AppContainer(context: Context) {
     val db: KyeDatabase = KyeDatabase.build(context)
     val prefs = Prefs(context)
-    val repo = Repository(db, prefs)
+    val repo = Repository(db, prefs, Receipts.dir(context))
 
     /** Background work. A failure in one job (widget, backup…) is logged, never crashes the app. */
     val scope = CoroutineScope(
@@ -71,6 +72,8 @@ open class KyeApp : Application() {
         container.repo.processRecurring(today).forEach { Notifier.showReminder(this, it) }
         val hide = container.prefs.settings.first().appLock
         container.repo.loansToRemind(today).forEach { Notifier.showLoanReminder(this, it, hide) }
+        container.repo.warrantiesToRemind(today).forEach { (txn, w) -> Notifier.showWarrantyReminder(this, txn, w) }
+        container.repo.cleanUpReceipts()
     }
 
     /**

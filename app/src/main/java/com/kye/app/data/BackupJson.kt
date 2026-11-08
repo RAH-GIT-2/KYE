@@ -13,7 +13,10 @@ data class BackupData(
     val keywords: List<KeywordRule>,
     val loans: List<Loan> = emptyList(),
     val loanPayments: List<LoanPayment> = emptyList(),
-    val events: List<Event> = emptyList()
+    val events: List<Event> = emptyList(),
+    val attachments: List<Attachment> = emptyList(),
+    val warranties: List<Warranty> = emptyList(),
+    val goals: List<Goal> = emptyList()
 )
 
 /**
@@ -45,7 +48,7 @@ object BackupJson {
                     .put("dateTime", it.dateTime).put("paymentMode", it.paymentMode.name).put("note", it.note)
                     .put("source", it.source.name).putOpt("recurringRuleId", it.recurringRuleId)
                     .putOpt("rawVoiceText", it.rawVoiceText).put("createdAt", it.createdAt).put("updatedAt", it.updatedAt)
-                    .putOpt("eventId", it.eventId)
+                    .putOpt("eventId", it.eventId).putOpt("goalId", it.goalId)
             }))
             .put("recurringRules", JSONArray(d.rules.map {
                 JSONObject().put("id", it.id).put("name", it.name).put("amountPaise", it.amountPaise).put("type", it.type.name)
@@ -77,6 +80,16 @@ object BackupJson {
                 JSONObject().put("id", it.id).put("name", it.name).put("emoji", it.emoji)
                     .putOpt("budgetPaise", it.budgetPaise).putOpt("startDate", it.startDate).putOpt("endDate", it.endDate)
                     .put("isClosed", it.isClosed).put("createdAt", it.createdAt)
+            }))
+            .put("attachments", JSONArray(d.attachments.map {
+                JSONObject().put("id", it.id).put("txnId", it.txnId).put("fileName", it.fileName).put("createdAt", it.createdAt)
+            }))
+            .put("warranties", JSONArray(d.warranties.map {
+                JSONObject().put("txnId", it.txnId).put("untilDate", it.untilDate).put("stage", it.stage)
+            }))
+            .put("goals", JSONArray(d.goals.map {
+                JSONObject().put("id", it.id).put("name", it.name).put("emoji", it.emoji).put("targetPaise", it.targetPaise)
+                    .putOpt("targetDate", it.targetDate).put("isClosed", it.isClosed).put("createdAt", it.createdAt)
             }))
         return root.toString(1)
     }
@@ -116,7 +129,8 @@ object BackupJson {
                     note = it.optString("note"), source = enumOr(it.optString("source"), Source.MANUAL),
                     recurringRuleId = it.longOrNull("recurringRuleId"), rawVoiceText = it.stringOrNull("rawVoiceText"),
                     createdAt = it.optLong("createdAt"), updatedAt = it.optLong("updatedAt"),
-                    eventId = it.longOrNull("eventId")
+                    eventId = it.longOrNull("eventId"),
+                    goalId = it.longOrNull("goalId")
                 )
             }
             val rules = root.getJSONArray("recurringRules").objects().map {
@@ -169,11 +183,32 @@ object BackupJson {
                 )
             }
             val eventIds = events.map { it.id }.toSet()
-            val txnsChecked = txns.map { if (it.eventId != null && it.eventId !in eventIds) it.copy(eventId = null) else it }
+            // Photos, warranties and goals arrived in v2.3.
+            val goals = (root.optJSONArray("goals") ?: JSONArray()).objects().map {
+                Goal(
+                    id = it.getLong("id"), name = it.getString("name"), emoji = it.optString("emoji", "🎯"),
+                    targetPaise = it.getLong("targetPaise"), targetDate = it.longOrNull("targetDate"),
+                    isClosed = it.optBoolean("isClosed"), createdAt = it.optLong("createdAt")
+                )
+            }
+            val goalIds = goals.map { it.id }.toSet()
+            val txnsChecked = txns.map {
+                it.copy(
+                    eventId = it.eventId?.takeIf { id -> id in eventIds },
+                    goalId = it.goalId?.takeIf { id -> id in goalIds }
+                )
+            }
+            val txnIds = txnsChecked.map { it.id }.toSet()
+            val attachments = (root.optJSONArray("attachments") ?: JSONArray()).objects().map {
+                Attachment(id = it.getLong("id"), txnId = it.getLong("txnId"), fileName = it.getString("fileName"), createdAt = it.optLong("createdAt"))
+            }.filter { it.txnId in txnIds && it.fileName.matches(Regex("[A-Za-z0-9._-]+")) }
+            val warranties = (root.optJSONArray("warranties") ?: JSONArray()).objects().map {
+                Warranty(txnId = it.getLong("txnId"), untilDate = it.getLong("untilDate"), stage = it.optInt("stage"))
+            }.filter { it.txnId in txnIds }
             if (categories.isEmpty()) throw UserError("This backup has no categories")
             return BackupData(
                 root.optInt("seedVersion", 1), categories, subcategories, txnsChecked, rules, budgets, keywords,
-                loans, loanPayments, events
+                loans, loanPayments, events, attachments, warranties, goals
             )
         } catch (e: UserError) {
             throw e

@@ -41,6 +41,17 @@
             android:name=".work.ReminderReceiver"
             android:exported="false" />
 
+        <!-- Receipt photos: camera target and sharing (only these two folders are exposed). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Home-screen widget -->
         <receiver
             android:name=".work.KyeWidget"

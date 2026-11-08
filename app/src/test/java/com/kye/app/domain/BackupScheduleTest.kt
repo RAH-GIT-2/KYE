@@ -46,7 +46,7 @@ class BackupScheduleTest {
     @Test fun fileNamesSortByTime() {
         val a = BackupSchedule.fileName(LocalDateTime.of(2026, 11, 7, 9, 5))
         val b = BackupSchedule.fileName(LocalDateTime.of(2026, 11, 7, 21, 15))
-        assertEquals("KYE-auto-backup-2026-11-07-0905.json", a)
+        assertEquals("KYE-auto-backup-2026-11-07-0905.zip", a)
         assertTrue(a < b)
     }
 
@@ -56,5 +56,12 @@ class BackupScheduleTest {
         val deleted = BackupSchedule.toDelete(names)
         assertEquals(autos.take(3).toSet(), deleted.toSet())
         assertTrue(BackupSchedule.toDelete(autos.take(4)).isEmpty())
+    }
+
+    @Test fun olderJsonAutoBackupsCountTowardsTheFive() {
+        // Two .json from before v2.3 (older) and four .zip after: the oldest .json goes.
+        val names = listOf("KYE-auto-backup-2026-10-01-0900.json", "KYE-auto-backup-2026-10-08-0900.json") +
+            (1..4).map { BackupSchedule.fileName(LocalDateTime.of(2026, 11, it, 9, 0)) }
+        assertEquals(listOf("KYE-auto-backup-2026-10-01-0900.json"), BackupSchedule.toDelete(names))
     }
 }

@@ -67,7 +67,7 @@ object AutoBackup {
 
     private suspend fun write(context: Context, tree: Uri, name: String, body: suspend (java.io.OutputStream) -> Unit) {
         val resolver = context.contentResolver
-        val doc = DocumentsContract.createDocument(resolver, folderDoc(tree), "application/json", name)
+        val doc = DocumentsContract.createDocument(resolver, folderDoc(tree), "application/zip", name)
             ?: error("folder not writable")
         try {
             resolver.openOutputStream(doc, "wt")?.use { body(it) } ?: error("no stream")

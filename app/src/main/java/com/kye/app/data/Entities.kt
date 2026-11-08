@@ -65,7 +65,7 @@ data class Subcategory(
     @ColumnInfo(defaultValue = "0") val isDefault: Boolean = false
 )
 
-@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId"), Index("eventId")])
+@Entity(tableName = "txn", indices = [Index("dateTime"), Index("categoryId"), Index("eventId"), Index("goalId")])
 data class Txn(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val amountPaise: Long,
@@ -81,8 +81,70 @@ data class Txn(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     /** Event this entry belongs to (Deepavali, a trip…). Still counts in normal spending too. */
-    val eventId: Long? = null
+    val eventId: Long? = null,
+    /** Savings goal this Saving (or withdrawal Transfer) entry belongs to. */
+    val goalId: Long? = null
 )
+
+/** A receipt / bill photo, stored privately in the app's files (receipts/<fileName>). */
+@Entity(
+    tableName = "attachment",
+    foreignKeys = [ForeignKey(entity = Txn::class, parentColumns = ["id"], childColumns = ["txnId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("txnId")]
+)
+data class Attachment(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val txnId: Long,
+    val fileName: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * Warranty on a purchase. [stage]: 0 = nothing sent, 1 = "ends in 30 days" sent, 2 = "ends today" sent.
+ * [untilDate] is LocalDate.toEpochDay().
+ */
+@Entity(
+    tableName = "warranty",
+    foreignKeys = [ForeignKey(entity = Txn::class, parentColumns = ["id"], childColumns = ["txnId"], onDelete = ForeignKey.CASCADE)]
+)
+data class Warranty(
+    @PrimaryKey val txnId: Long,
+    val untilDate: Long,
+    val stage: Int = 0
+)
+
+/** A savings goal: "Goa trip ₹50,000 by March". Money in = Saving entries tagged to it. */
+@Entity(tableName = "goal")
+data class Goal(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val emoji: String,
+    val targetPaise: Long,
+    val targetDate: Long? = null,
+    val isClosed: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** A goal with money saved towards it (savings minus withdrawals). */
+data class GoalRow(
+    @Embedded val goal: Goal,
+    val savedPaise: Long,
+    val withdrawnPaise: Long
+) {
+    val progress: Long get() = (savedPaise - withdrawnPaise).coerceAtLeast(0)
+}
+
+/** An entry with a warranty, for the Warranties list. */
+data class WarrantyRow(
+    @Embedded val txn: Txn,
+    val untilDate: Long,
+    val catName: String?,
+    val catEmoji: String?,
+    val subName: String?,
+    val attachments: Int
+) {
+    val title: String get() = txn.note.ifBlank { subName ?: catName ?: "Purchase" }
+}
 
 /**
  * An occasion with its own budget: a festival, wedding, trip, school reopening. Entries are
@@ -199,7 +261,11 @@ data class TxnRow(
     val catEmoji: String?,
     val catColor: Long?,
     val subName: String?,
-    val subIsDefault: Boolean?
+    val subIsDefault: Boolean?,
+    /** Receipt photos attached (📎). */
+    val attachments: Int = 0,
+    /** Warranty end (epoch day), if one was set (🛡️). */
+    val warrantyUntil: Long? = null
 ) {
     /** Subcategory name, unless it's the catch-all "Others". */
     val specificSub: String?

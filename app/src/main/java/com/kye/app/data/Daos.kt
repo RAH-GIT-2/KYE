@@ -10,7 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 const val ROW_SELECT =
     "SELECT t.*, c.name AS catName, c.emoji AS catEmoji, c.color AS catColor, s.name AS subName, " +
-        "s.isDefault AS subIsDefault " +
+        "s.isDefault AS subIsDefault, " +
+        "(SELECT COUNT(*) FROM attachment a WHERE a.txnId = t.id) AS attachments, " +
+        "(SELECT w.untilDate FROM warranty w WHERE w.txnId = t.id) AS warrantyUntil " +
         "FROM txn t LEFT JOIN category c ON c.id = t.categoryId " +
         "LEFT JOIN subcategory s ON s.id = t.subcategoryId"
 
@@ -266,6 +268,54 @@ interface EventDao {
     @Query("UPDATE txn SET eventId = :eventId WHERE id = :txnId") suspend fun tag(txnId: Long, eventId: Long?)
 }
 
+/** Receipt photos, warranties and savings goals (v2.3). */
+@Dao
+interface ExtrasDao {
+    // ---- Photos
+    @Query("SELECT * FROM attachment WHERE txnId = :txnId ORDER BY id")
+    fun observeAttachments(txnId: Long): Flow<List<Attachment>>
+
+    @Query("SELECT * FROM attachment WHERE txnId = :txnId") suspend fun attachmentsOf(txnId: Long): List<Attachment>
+    @Query("SELECT * FROM attachment WHERE id = :id") suspend fun attachment(id: Long): Attachment?
+    @Query("SELECT fileName FROM attachment") suspend fun allFileNames(): List<String>
+    @Insert suspend fun insertAttachment(a: Attachment): Long
+    @Query("DELETE FROM attachment WHERE id = :id") suspend fun deleteAttachment(id: Long)
+
+    // ---- Warranties
+    @Query("SELECT * FROM warranty WHERE txnId = :txnId") suspend fun warranty(txnId: Long): Warranty?
+    @Upsert suspend fun upsertWarranty(w: Warranty)
+    @Query("DELETE FROM warranty WHERE txnId = :txnId") suspend fun deleteWarranty(txnId: Long)
+    @Query("SELECT * FROM warranty") suspend fun allWarranties(): List<Warranty>
+
+    @Query(
+        "SELECT t.*, w.untilDate AS untilDate, c.name AS catName, c.emoji AS catEmoji, s.name AS subName, " +
+            "(SELECT COUNT(*) FROM attachment a WHERE a.txnId = t.id) AS attachments " +
+            "FROM warranty w JOIN txn t ON t.id = w.txnId " +
+            "LEFT JOIN category c ON c.id = t.categoryId LEFT JOIN subcategory s ON s.id = t.subcategoryId " +
+            "ORDER BY w.untilDate"
+    )
+    fun observeWarranties(): Flow<List<WarrantyRow>>
+
+    // ---- Goals
+    @Query(
+        "SELECT g.*, " +
+            "COALESCE((SELECT SUM(t.amountPaise) FROM txn t WHERE t.goalId = g.id AND t.type = 'SAVING'), 0) AS savedPaise, " +
+            "COALESCE((SELECT SUM(t.amountPaise) FROM txn t WHERE t.goalId = g.id AND t.type = 'TRANSFER'), 0) AS withdrawnPaise " +
+            "FROM goal g ORDER BY g.isClosed, g.createdAt DESC"
+    )
+    fun observeGoals(): Flow<List<GoalRow>>
+
+    @Query(ROW_SELECT + " WHERE t.goalId = :goalId ORDER BY t.dateTime DESC, t.id DESC")
+    fun observeGoalTxns(goalId: Long): Flow<List<TxnRow>>
+
+    @Query("SELECT * FROM goal WHERE id = :id") suspend fun goal(id: Long): Goal?
+    @Insert suspend fun insertGoal(g: Goal): Long
+    @Update suspend fun updateGoal(g: Goal)
+    @Query("DELETE FROM goal WHERE id = :id") suspend fun deleteGoal(id: Long)
+    @Query("UPDATE txn SET goalId = NULL WHERE goalId = :goalId") suspend fun untagGoal(goalId: Long)
+    @Query("UPDATE txn SET goalId = :goalId WHERE id = :txnId") suspend fun tagGoal(txnId: Long, goalId: Long?)
+}
+
 /** Raw table access for JSON backup and restore. */
 @Dao
 interface BackupDao {
@@ -283,6 +333,15 @@ interface BackupDao {
     @Query("SELECT * FROM event") suspend fun events(): List<Event>
     @Insert suspend fun insertEvents(v: List<Event>)
     @Query("DELETE FROM event") suspend fun clearEvents()
+    @Query("SELECT * FROM attachment") suspend fun attachments(): List<Attachment>
+    @Query("SELECT * FROM warranty") suspend fun warranties(): List<Warranty>
+    @Query("SELECT * FROM goal") suspend fun goals(): List<Goal>
+    @Insert suspend fun insertAttachments(v: List<Attachment>)
+    @Insert suspend fun insertWarranties(v: List<Warranty>)
+    @Insert suspend fun insertGoals(v: List<Goal>)
+    @Query("DELETE FROM attachment") suspend fun clearAttachments()
+    @Query("DELETE FROM warranty") suspend fun clearWarranties()
+    @Query("DELETE FROM goal") suspend fun clearGoals()
     @Query("DELETE FROM loan") suspend fun clearLoans()
 
     @Insert suspend fun insertCategories(v: List<Category>)

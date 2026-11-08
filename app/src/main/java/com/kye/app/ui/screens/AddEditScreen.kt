@@ -22,7 +22,17 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.kye.app.voice.VoiceParser
 import com.kye.app.domain.Events
+import com.kye.app.domain.Warranties
+import com.kye.app.data.Receipts
 import com.kye.app.ui.components.EventChips
+import com.kye.app.ui.components.GoalChips
+import com.kye.app.ui.components.ReceiptItem
+import com.kye.app.ui.components.ReceiptStrip
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -106,6 +116,18 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var note by remember { mutableStateOf("") }
     var splitWays by remember { mutableIntStateOf(1) }
     var eventId by remember { mutableStateOf<Long?>(null) }
+    var goalId by remember { mutableStateOf<Long?>(null) }
+    val goals by vm.goals.collectAsStateWithLifecycle()
+    // Bill photos added in this visit (saved with the entry) and the warranty end date.
+    var newPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
+    var warranty by remember { mutableStateOf<LocalDate?>(null) }
+    var pickingWarranty by remember { mutableStateOf(false) }
+    var photoBusy by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(false) }
+    var cameraFile by remember { mutableStateOf<java.io.File?>(null) }
+    var deletingPhoto by remember { mutableStateOf<ReceiptItem?>(null) }
+    val savedPhotos by remember(txnId) { if (txnId > 0) vm.attachments(txnId) else kotlinx.coroutines.flow.flowOf(emptyList()) }
+        .collectAsState(initial = emptyList())
     val events by vm.events.collectAsStateWithLifecycle()
     var repeat by remember { mutableStateOf(false) }
     var repeatUnit by remember { mutableStateOf(RepeatUnit.MONTH) }
@@ -114,6 +136,37 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var confirmDelete by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+
+    fun addPhoto(uri: android.net.Uri) {
+        photoBusy = true
+        scope.launch {
+            try {
+                newPhotos = newPhotos + vm.importPhoto(uri)
+            } catch (e: Exception) {
+                Toast.makeText(context, e.message ?: "Couldn't add that photo", Toast.LENGTH_SHORT).show()
+            }
+            photoBusy = false
+        }
+    }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val f = cameraFile
+        if (ok && f != null) {
+            photoBusy = true
+            scope.launch {
+                runCatching { newPhotos = newPhotos + vm.importPhoto(android.net.Uri.fromFile(f)) }
+                f.delete()
+                photoBusy = false
+            }
+        } else f?.delete()
+        cameraFile = null
+    }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) addPhoto(uri)
+    }
+    // Photos picked for an entry that's then abandoned are removed.
+    DisposableEffect(Unit) {
+        onDispose { if (!saved) newPhotos.forEach { vm.discardPhoto(it) } }
+    }
     var quick by remember { mutableStateOf("") }
 
     /** Quick type: "swiggy 450 biryani" fills the form, using the same parser as voice entry. */
@@ -155,6 +208,8 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                 payment = t.paymentMode
                 note = t.note
                 eventId = t.eventId
+                goalId = t.goalId
+                warranty = vm.warrantyOf(t.id)?.untilDate?.let { LocalDate.ofEpochDay(it) }
             }
         } else {
             // A running event is pre-selected; one tap on "None" removes it.
@@ -197,9 +252,11 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             dateTime = Dates.atMillis(date, time),
             paymentMode = payment,
             note = note.trim(),
-            eventId = eventId
+            eventId = eventId,
+            goalId = if (type == TxnType.SAVING) goalId else null
         )
-        vm.saveTxn(txn) { msg ->
+        saved = true
+        vm.saveTxnFull(txn, newPhotos, if (type == TxnType.EXPENSE) warranty else null) { msg ->
             if (repeat && old == null) {
                 val name = note.trim().ifBlank {
                     allSubs.firstOrNull { it.id == subId }?.takeIf { !it.isDefault }?.name
@@ -381,6 +438,55 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                 extra = events.firstOrNull { it.event.id == eventId }?.event
             )
 
+            // Savings goal (Saving entries only).
+            if (type == TxnType.SAVING) {
+                GoalChips(goals.filter { !it.goal.isClosed || it.goal.id == goalId }.map { it.goal }, goalId) { goalId = it }
+            }
+
+            // Bill photos.
+            Column {
+                Label("Bill photos")
+                Spacer(Modifier.height(6.dp))
+                ReceiptStrip(
+                    items = savedPhotos.map { ReceiptItem(it.id, it.fileName) } + newPhotos.map { ReceiptItem(null, it) },
+                    busy = photoBusy,
+                    onCamera = {
+                        val (file, uri) = Receipts.cameraTarget(context)
+                        cameraFile = file
+                        camera.launch(uri)
+                    },
+                    onGallery = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onDelete = { deletingPhoto = it }
+                )
+            }
+
+            // Warranty (purchases only): 1 / 2 / 3 years from the purchase date, or a date.
+            if (type == TxnType.EXPENSE) {
+                Column {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Label("Warranty")
+                        ChoiceChip("None", warranty == null, { warranty = null })
+                        listOf(1, 2, 3).forEach { y ->
+                            val until = Warranties.until(date, y)
+                            ChoiceChip("$y yr", warranty == until, { warranty = until })
+                        }
+                        val custom = warranty?.takeIf { w -> (1..3).none { Warranties.until(date, it) == w } }
+                        ChoiceChip(custom?.let { Dates.label(it) } ?: "Date…", custom != null, { pickingWarranty = true })
+                    }
+                    warranty?.let {
+                        Text(
+                            "Covered till ${Dates.label(it)}. KYE reminds you 30 days before, and on the day.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
@@ -424,6 +530,28 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
 
     if (showDate) {
         DatePickerSheet(date, onDismiss = { showDate = false }) { date = it }
+    }
+
+    if (pickingWarranty) {
+        DatePickerSheet(warranty ?: Warranties.until(date, 1), onDismiss = { pickingWarranty = false }) { warranty = it }
+    }
+
+    deletingPhoto?.let { p ->
+        AlertDialog(
+            onDismissRequest = { deletingPhoto = null },
+            title = { Text("Delete this photo?") },
+            text = { Text("The bill photo is removed from KYE.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingPhoto = null
+                    if (p.id != null) vm.deleteAttachment(p.id) else {
+                        newPhotos = newPhotos - p.fileName
+                        vm.discardPhoto(p.fileName)
+                    }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deletingPhoto = null }) { Text("Cancel") } }
+        )
     }
 
     if (confirmDelete) {

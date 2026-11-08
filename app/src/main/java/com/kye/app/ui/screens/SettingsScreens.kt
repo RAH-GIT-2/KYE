@@ -36,6 +36,8 @@ import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material.icons.rounded.Celebration
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Handshake
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material3.AlertDialog
@@ -93,7 +95,9 @@ fun SettingsScreen(
     onCategories: () -> Unit,
     onImport: () -> Unit,
     onLoans: () -> Unit,
-    onEvents: () -> Unit
+    onEvents: () -> Unit,
+    onGoals: () -> Unit,
+    onWarranties: () -> Unit
 ) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -105,7 +109,7 @@ fun SettingsScreen(
             }
         }
     }
-    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) vm.exportBackup(uri, toast)
     }
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
@@ -192,14 +196,16 @@ fun SettingsScreen(
             }
             ActionRow(Icons.Rounded.Category, "Categories", "Add, rename, hide or merge categories and subcategories", onCategories)
             ActionRow(Icons.Rounded.Savings, "Budgets", "Monthly limits with 80% / 100% alerts", onBudgets)
+            ActionRow(Icons.Rounded.Flag, "Savings goals", "A trip, a bike, a phone: a target, and how much to save each month", onGoals)
+            ActionRow(Icons.Rounded.VerifiedUser, "Warranties", "Purchases still under warranty, with their bills", onWarranties)
             ActionRow(Icons.Rounded.Celebration, "Events", "Deepavali, a wedding or a trip, each with its own budget", onEvents)
             ActionRow(Icons.Rounded.Handshake, "Lent & borrowed", "Who owes you, whom you owe, part repayments and due-date reminders", onLoans)
             AutoBackupCard(vm)
-            ActionRow(Icons.Rounded.Backup, "Back up to a file now", "Pick where to save one backup file, e.g. Google Drive. Restore reads these files.") {
-                backup.launch("KYE-backup-${LocalDate.now()}.json")
+            ActionRow(Icons.Rounded.Backup, "Back up to a file now", "One .zip with everything, bill photos included. Save it to Google Drive.") {
+                backup.launch("KYE-backup-${LocalDate.now()}.zip")
             }
             ActionRow(Icons.Rounded.Restore, "Restore from backup", "Replaces everything on this phone with the backup") {
-                restorePicker.launch(arrayOf("application/json", "application/octet-stream", "text/plain"))
+                restorePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/json", "application/octet-stream", "text/plain"))
             }
             ActionRow(Icons.Rounded.UploadFile, "Import from CSV", "Add expenses and income from a spreadsheet. Get the blank template there.", onImport)
             ActionRow(Icons.Rounded.FileDownload, "Export to CSV", "Same columns as the import template. Opens in Excel or Google Sheets") {

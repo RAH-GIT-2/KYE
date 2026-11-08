@@ -13,6 +13,10 @@ import com.kye.app.data.CategoryKind
 import com.kye.app.data.KeywordRule
 import com.kye.app.data.Event
 import com.kye.app.data.EventRow
+import com.kye.app.data.Goal
+import com.kye.app.data.GoalRow
+import com.kye.app.data.Receipts
+import com.kye.app.data.WarrantyRow
 import com.kye.app.data.Loan
 import com.kye.app.data.LoanRow
 import com.kye.app.domain.Events
@@ -112,6 +116,60 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     val keywordRules: StateFlow<List<KeywordRule>> = repo.keywordRules
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // ---------- Receipt photos, warranties, goals ----------
+
+    val goals: StateFlow<List<GoalRow>> = repo.goals
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val warranties: StateFlow<List<WarrantyRow>> = repo.warranties
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun goalTxns(goalId: Long) = repo.goalTxns(goalId)
+    fun attachments(txnId: Long) = repo.attachments(txnId)
+    suspend fun warrantyOf(txnId: Long) = withContext(Dispatchers.IO) { repo.warrantyOf(txnId) }
+
+    /** Copies a picked or captured photo into KYE's private receipts folder, shrunk. Returns its file name. */
+    suspend fun importPhoto(uri: Uri): String = withContext(Dispatchers.IO) { Receipts.import(getApplication(), uri) }
+
+    fun addAttachment(txnId: Long, fileName: String) {
+        viewModelScope.launch(Dispatchers.IO) { repo.addAttachment(txnId, fileName) }
+    }
+
+    fun deleteAttachment(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) { repo.deleteAttachment(id) }
+    }
+
+    /** A photo picked for an entry that was then never saved. */
+    fun discardPhoto(fileName: String) {
+        viewModelScope.launch(Dispatchers.IO) { Receipts.file(getApplication(), fileName).delete() }
+    }
+
+    /** Saves an entry plus any new photos and its warranty (null = none). Reports budget alerts. */
+    fun saveTxnFull(txn: Txn, newPhotos: List<String>, warranty: LocalDate?, onDone: (String?) -> Unit) {
+        viewModelScope.launch {
+            val name = txn.categoryId?.let { categoryMap.value[it]?.name }
+            val msg = withContext(Dispatchers.IO) {
+                val (id, alert) = repo.saveChecked(txn, name)
+                newPhotos.forEach { repo.addAttachment(id, it) }
+                repo.setWarranty(id, warranty)
+                alert
+            }
+            onDone(msg)
+        }
+    }
+
+    fun saveGoal(g: Goal, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.saveGoal(g) }
+    fun setGoalClosed(id: Long, closed: Boolean, onError: (String) -> Unit) = change(onError) { repo.setGoalClosed(id, closed) }
+    fun deleteGoal(id: Long, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.deleteGoal(id) }
+
+    fun addToGoal(
+        goalId: Long, amount: Long, date: LocalDate, payment: PaymentMode, categoryId: Long?, subcategoryId: Long?,
+        onError: (String) -> Unit, onDone: () -> Unit
+    ) = change(onError, onDone) { repo.addToGoal(goalId, amount, date, payment, categoryId, subcategoryId) }
+
+    fun withdrawFromGoal(goalId: Long, amount: Long, date: LocalDate, available: Long, onError: (String) -> Unit, onDone: () -> Unit) =
+        change(onError, onDone) { repo.withdrawFromGoal(goalId, amount, date, available) }
 
     val events: StateFlow<List<EventRow>> = repo.events
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

@@ -73,8 +73,11 @@ fun HomeScreen(
     onRecurring: () -> Unit,
     onLoans: () -> Unit,
     onAsk: (Boolean) -> Unit,
-    onEvent: (Long) -> Unit
+    onEvent: (Long) -> Unit,
+    onGoal: (Long) -> Unit
 ) {
+    val goalRows by vm.goals.collectAsStateWithLifecycle()
+    val openGoals = goalRows.filter { !it.goal.isClosed }.take(3)
     val eventRows by vm.events.collectAsStateWithLifecycle()
     val runningEvents = eventRows.filter { Events.isActive(it.event, LocalDate.now()) }
     val s by vm.home.collectAsStateWithLifecycle()
@@ -183,6 +186,21 @@ fun HomeScreen(
         }
 
         s.forecast?.let { f -> item(key = "forecast") { ForecastCard(f, today, onBudgets) } }
+
+        if (openGoals.isNotEmpty()) {
+            item(key = "goals") {
+                SectionCard(title = "Savings goals") {
+                    openGoals.forEachIndexed { i, r ->
+                        if (i > 0) Spacer(Modifier.height(12.dp))
+                        Column(Modifier.fillMaxWidth().clickable { onGoal(r.goal.id) }) {
+                            Text("${r.goal.emoji} ${r.goal.name}", style = MaterialTheme.typography.bodyLarge)
+                            Spacer(Modifier.height(4.dp))
+                            GoalProgress(r, today)
+                        }
+                    }
+                }
+            }
+        }
 
         if (loans.open > 0) {
             item(key = "loans") {

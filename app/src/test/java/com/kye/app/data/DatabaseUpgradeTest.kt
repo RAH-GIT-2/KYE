@@ -98,6 +98,13 @@ class DatabaseUpgradeTest {
         val eventId = db.eventDao().insert(Event(name = "Deepavali", emoji = "🪔", budgetPaise = 1_000_00))
         db.eventDao().tag(1, eventId)
         assertEquals(450_00L, db.eventDao().spent(eventId))
+
+        // v6 added photos, warranties and goals.
+        db.extrasDao().insertAttachment(Attachment(txnId = 1, fileName = "r-1.jpg"))
+        db.extrasDao().upsertWarranty(Warranty(txnId = 1, untilDate = 99_999))
+        assertEquals(1, db.txnDao().allRows().first { it.txn.id == 1L }.attachments)
+        assertEquals(99_999L, db.txnDao().allRows().first { it.txn.id == 1L }.warrantyUntil)
+        assertTrue(db.extrasDao().insertGoal(Goal(name = "Bike", emoji = "🏍️", targetPaise = 1)) > 0)
         db.close()
     }
 

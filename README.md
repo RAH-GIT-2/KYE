@@ -65,6 +65,11 @@ Without that file the release build falls back to the debug key, so it still bui
 
 - **Events** (Settings → Events; Home card while one is on): Deepavali, a wedding, a trip or school reopening, each with an optional budget and dates. While a dated event is on, new entries start tagged to it (visible chip, one tap removes it); "crackers 2000 for deepavali" tags by name; long-press older entries in History to tag them. The event page shows spent vs budget, a category breakdown and its entries, with 80%/100% alerts. Entries still count in normal monthly spending. Mark done to keep it as a record. In backups and the CSV (optional Event column).
 
+- **Bill photos** (+ screen → Bill photos → Camera / Gallery): stored privately inside KYE, shrunk to ~150–400 KB. 📎 on entries; tap to view full screen, pinch to zoom, share or delete.
+- **Warranties** (+ screen, expenses): 1 / 2 / 3 years or a date. Reminder 30 days before and on the day. Settings → Warranties lists what's covered, soonest first, with the bill one tap away.
+- **Savings goals** (Settings → Savings goals; Home card): target and optional date, "Add ₹" (saved as a Saving entry, so it counts in savings) or tag Saving entries on the + screen, "Take out" (a transfer). Shows % and how much to save each month to reach it in time.
+- **Backups are now .zip** (data + bill photos), manual and automatic; older .json backups still restore.
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

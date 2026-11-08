@@ -37,12 +37,15 @@ object BackupSchedule {
     fun isDue(frequency: BackupFrequency, lastBackup: LocalDate?, today: LocalDate): Boolean =
         nextDue(frequency, lastBackup, today)?.let { !it.isAfter(today) } ?: false
 
-    /** "KYE-auto-backup-2026-11-07-2115.json": sorts oldest → newest by name. */
-    fun fileName(at: LocalDateTime): String = PREFIX + at.format(NAME_TIME) + ".json"
+    /** "KYE-auto-backup-2026-11-07-2115.zip" (data + receipt photos): sorts oldest → newest by name. */
+    fun fileName(at: LocalDateTime): String = PREFIX + at.format(NAME_TIME) + ".zip"
 
-    /** Automatic backups beyond the newest [keep]. Files the user saved themselves are never touched. */
+    /**
+     * Automatic backups beyond the newest [keep] (.zip, and .json from before v2.3). Files the user
+     * saved themselves are never touched.
+     */
     fun toDelete(names: List<String>, keep: Int = KEEP): List<String> =
-        names.filter { it.startsWith(PREFIX) && it.endsWith(".json") }
-            .sortedDescending()
+        names.filter { it.startsWith(PREFIX) && (it.endsWith(".zip") || it.endsWith(".json")) }
+            .sortedByDescending { it.removePrefix(PREFIX).substringBeforeLast('.') }
             .drop(keep)
 }

@@ -17,6 +17,8 @@ import com.kye.app.R
 import com.kye.app.data.LoanDirection
 import com.kye.app.data.LoanRow
 import com.kye.app.data.RecurringRule
+import com.kye.app.data.Txn
+import com.kye.app.data.Warranty
 import com.kye.app.domain.Dates
 import com.kye.app.domain.Money
 import java.time.LocalDate
@@ -25,6 +27,34 @@ object Notifier {
     const val CHANNEL_BILLS = "bills"
 
     const val CHANNEL_LOANS = "loans"
+    const val CHANNEL_WARRANTY = "warranty"
+
+    /** "Samsung TV: warranty ends on 7 Nov 2027" (30 days before), then "ends today". */
+    @SuppressLint("MissingPermission")
+    fun showWarrantyReminder(context: Context, txn: Txn, w: Warranty) {
+        if (!canNotify(context)) return
+        val name = txn.note.ifBlank { "A purchase" }
+        val until = LocalDate.ofEpochDay(w.untilDate)
+        val title = if (w.stage >= 2) {
+            if (until == LocalDate.now()) "$name: warranty ends today" else "$name: warranty has ended"
+        } else "$name: warranty ends ${Dates.label(until)}"
+        val id = 200_000 + txn.id.toInt()
+        val open = PendingIntent.getActivity(
+            context, id,
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        NotificationManagerCompat.from(context).notify(
+            id,
+            NotificationCompat.Builder(context, CHANNEL_WARRANTY)
+                .setSmallIcon(R.drawable.ic_stat_kye)
+                .setContentTitle(title)
+                .setContentText("Bought ${Dates.label(Dates.toLocalDate(txn.dateTime))} · Settings → Warranties has the bill")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+        )
+    }
 
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
@@ -36,6 +66,11 @@ object Notifier {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_LOANS, "Lent & borrowed", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "When money you lent or borrowed is due"
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_WARRANTY, "Warranties", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "30 days before a warranty ends, and on the day"
             }
         )
     }

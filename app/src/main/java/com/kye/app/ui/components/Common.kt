@@ -147,7 +147,9 @@ fun TxnItem(
                     com.kye.app.data.Source.VOICE -> "🎙"
                     com.kye.app.data.Source.RECURRING -> "🔁"
                     else -> null
-                }
+                },
+                if (row.attachments > 0) "📎" else null,
+                if (row.warrantyUntil != null) "🛡️" else null
             ).joinToString(" · ")
             Text(
                 meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

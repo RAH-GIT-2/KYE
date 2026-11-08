@@ -84,7 +84,10 @@ import com.kye.app.ui.screens.HistoryScreen
 import com.kye.app.ui.screens.HomeScreen
 import com.kye.app.ui.screens.EventDetailScreen
 import com.kye.app.ui.screens.EventsScreen
+import com.kye.app.ui.screens.GoalDetailScreen
+import com.kye.app.ui.screens.GoalsScreen
 import com.kye.app.ui.screens.ImportScreen
+import com.kye.app.ui.screens.WarrantiesScreen
 import com.kye.app.ui.screens.LoanDetailScreen
 import com.kye.app.ui.screens.LoansScreen
 import com.kye.app.ui.screens.InsightsScreen
@@ -311,9 +314,18 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onRecurring = { nav.goTab("recurring") },
                     onLoans = { nav.navigate("loans") },
                     onAsk = { mic -> nav.navigate("ask?mic=$mic") },
-                    onEvent = { nav.navigate("event/$it") }
+                    onEvent = { nav.navigate("event/$it") },
+                    onGoal = { nav.navigate("goal/$it") }
                 )
             }
+            composable("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
+            composable(
+                "goal/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { e ->
+                GoalDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
+            }
+            composable("warranties") { WarrantiesScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() } }
             composable("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
             composable(
                 "event/{id}",
@@ -369,7 +381,9 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onCategories = { nav.navigate("categories") },
                     onImport = { nav.navigate("import") },
                     onLoans = { nav.navigate("loans") },
-                    onEvents = { nav.navigate("events") }
+                    onEvents = { nav.navigate("events") },
+                    onGoals = { nav.navigate("goals") },
+                    onWarranties = { nav.navigate("warranties") }
                 )
             }
             composable("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }

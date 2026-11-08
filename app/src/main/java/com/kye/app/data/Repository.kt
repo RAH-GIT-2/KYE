@@ -10,7 +10,14 @@ import com.kye.app.domain.Recurrence
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.kye.app.domain.Warranties
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import java.io.OutputStream
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -19,7 +26,10 @@ import java.time.LocalTime
 /** A user-facing problem (duplicate name, category still in use…). The message is shown as-is. */
 class UserError(message: String) : Exception(message)
 
-class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
+/**
+ * @param receiptsDir where receipt photos live (files/receipts). Null in tests that don't use photos.
+ */
+class Repository(private val db: KyeDatabase, private val prefs: Prefs, private val receiptsDir: File? = null) {
     private val categoryDao = db.categoryDao()
     private val txnDao = db.txnDao()
     private val recurringDao = db.recurringDao()
@@ -304,7 +314,14 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
             txn.id
         }
 
-    suspend fun deleteTxn(txn: Txn) = txnDao.delete(txn)
+    /** Deletes the entry, its photos (rows cascade; files removed here) and its warranty. */
+    suspend fun deleteTxn(txn: Txn) {
+        val files = db.extrasDao().attachmentsOf(txn.id).map { it.fileName }
+        txnDao.delete(txn)
+        files.forEach { receiptFile(it)?.delete() }
+    }
+
+    private fun receiptFile(name: String): File? = receiptsDir?.let { File(it, name) }
 
     /** Saves and returns a budget alert message if this entry crossed 80% or 100% of a budget. */
     suspend fun saveWithBudgetCheck(txn: Txn, categoryName: String?): String? = saveChecked(txn, categoryName).second
@@ -518,6 +535,118 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
 
     suspend fun undoImport(batch: Long): Int = txnDao.deleteImport(batch)
 
+    // ---------- Receipt photos ----------
+
+    fun attachments(txnId: Long): Flow<List<Attachment>> = db.extrasDao().observeAttachments(txnId)
+
+    /** [fileName] is already in receipts (see Receipts.import). */
+    suspend fun addAttachment(txnId: Long, fileName: String) {
+        db.extrasDao().insertAttachment(Attachment(txnId = txnId, fileName = fileName))
+    }
+
+    suspend fun deleteAttachment(id: Long) {
+        val a = db.extrasDao().attachment(id) ?: return
+        db.extrasDao().deleteAttachment(id)
+        receiptFile(a.fileName)?.delete()
+    }
+
+    /** Removes photo files nothing points to (e.g. the app closed before an entry was saved). Keeps today's. */
+    suspend fun cleanUpReceipts() {
+        val dir = receiptsDir ?: return
+        val used = db.extrasDao().allFileNames().toSet()
+        val dayAgo = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+        dir.listFiles()?.filter { it.name !in used && it.lastModified() < dayAgo }?.forEach { it.delete() }
+    }
+
+    // ---------- Warranties ----------
+
+    val warranties: Flow<List<WarrantyRow>> = db.extrasDao().observeWarranties()
+
+    suspend fun warrantyOf(txnId: Long): Warranty? = db.extrasDao().warranty(txnId)
+
+    /** Sets or clears an entry's warranty. A new date starts its reminders afresh. */
+    suspend fun setWarranty(txnId: Long, until: LocalDate?) {
+        val dao = db.extrasDao()
+        if (until == null) {
+            dao.deleteWarranty(txnId)
+            return
+        }
+        val old = dao.warranty(txnId)
+        if (old?.untilDate == until.toEpochDay()) return
+        dao.upsertWarranty(Warranty(txnId = txnId, untilDate = until.toEpochDay(), stage = 0))
+    }
+
+    /** Warranties to remind about today, with the stage reached (1 = in 30 days, 2 = ends today/ended). */
+    suspend fun warrantiesToRemind(today: LocalDate): List<Pair<Txn, Warranty>> {
+        val dao = db.extrasDao()
+        return db.withTransaction {
+            dao.allWarranties().mapNotNull { w ->
+                val stage = Warranties.dueStage(w.untilDate, w.stage, today) ?: return@mapNotNull null
+                val txn = txnDao.get(w.txnId) ?: return@mapNotNull null
+                val updated = w.copy(stage = stage)
+                dao.upsertWarranty(updated)
+                txn to updated
+            }
+        }
+    }
+
+    // ---------- Savings goals ----------
+
+    val goals: Flow<List<GoalRow>> = db.extrasDao().observeGoals()
+    fun goalTxns(goalId: Long): Flow<List<TxnRow>> = db.extrasDao().observeGoalTxns(goalId)
+
+    suspend fun saveGoal(g: Goal): Long {
+        val name = g.name.trim().replace(Regex("\\s+"), " ")
+        if (name.isEmpty()) throw UserError("Enter a name")
+        if (g.targetPaise <= 0) throw UserError("Enter a target amount")
+        val clean = g.copy(name = name, emoji = g.emoji.ifBlank { "🎯" })
+        return if (g.id == 0L) db.extrasDao().insertGoal(clean) else {
+            db.extrasDao().updateGoal(clean)
+            g.id
+        }
+    }
+
+    suspend fun setGoalClosed(id: Long, closed: Boolean) {
+        val g = db.extrasDao().goal(id) ?: return
+        db.extrasDao().updateGoal(g.copy(isClosed = closed))
+    }
+
+    /** Deletes the goal only; its savings entries stay, untagged. */
+    suspend fun deleteGoal(id: Long) = db.withTransaction {
+        db.extrasDao().untagGoal(id)
+        db.extrasDao().deleteGoal(id)
+    }
+
+    suspend fun tagGoal(txnId: Long, goalId: Long?) = db.extrasDao().tagGoal(txnId, goalId)
+
+    /** "Add ₹" on a goal: a Saving entry tagged to it, so it counts in savings as usual. */
+    suspend fun addToGoal(goalId: Long, amount: Long, date: LocalDate, payment: PaymentMode, categoryId: Long?, subcategoryId: Long?): Long {
+        if (amount <= 0) throw UserError("Enter an amount")
+        val g = db.extrasDao().goal(goalId) ?: throw UserError("Goal not found")
+        val time = if (date == LocalDate.now()) LocalTime.now() else LocalTime.NOON
+        return saveTxn(
+            Txn(
+                amountPaise = amount, type = TxnType.SAVING, categoryId = categoryId, subcategoryId = subcategoryId,
+                dateTime = Dates.atMillis(date, time), paymentMode = payment, note = "${g.emoji} ${g.name}", goalId = goalId
+            )
+        )
+    }
+
+    /** Taking money back out: a Transfer tagged to the goal (not spending, not income). */
+    suspend fun withdrawFromGoal(goalId: Long, amount: Long, date: LocalDate, available: Long): Long {
+        if (amount <= 0) throw UserError("Enter an amount")
+        if (amount > available) throw UserError("Only ${Money.format(available, showPaise = true)} is saved in this goal")
+        val g = db.extrasDao().goal(goalId) ?: throw UserError("Goal not found")
+        val time = if (date == LocalDate.now()) LocalTime.now() else LocalTime.NOON
+        return saveTxn(
+            Txn(
+                amountPaise = amount, type = TxnType.TRANSFER, categoryId = null, subcategoryId = null,
+                dateTime = Dates.atMillis(date, time), paymentMode = PaymentMode.UPI,
+                note = "Taken out of ${g.emoji} ${g.name}", goalId = goalId
+            )
+        )
+    }
+
     // ---------- Event budgets ----------
 
     val events: Flow<List<EventRow>> = db.eventDao().observeAll()
@@ -631,17 +760,55 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
                 keywords = backupDao.keywords(),
                 loans = backupDao.loans(),
                 loanPayments = backupDao.loanPayments(),
-                events = backupDao.events()
+                events = backupDao.events(),
+                attachments = backupDao.attachments(),
+                warranties = backupDao.warranties(),
+                goals = backupDao.goals()
             )
         }
-        out.bufferedWriter(Charsets.UTF_8).use { it.write(BackupJson.encode(data)) }
+        // A .zip: the data as JSON, plus every receipt photo.
+        ZipOutputStream(out.buffered()).use { zip ->
+            zip.putNextEntry(ZipEntry(BACKUP_JSON))
+            zip.write(BackupJson.encode(data).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            data.attachments.map { it.fileName }.distinct().forEach { name ->
+                val f = receiptFile(name) ?: return@forEach
+                if (!f.isFile) return@forEach
+                zip.putNextEntry(ZipEntry("receipts/$name"))
+                f.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
     }
 
-    /** Parses first, so a bad file never touches the database. Replaces everything on success. */
+    /**
+     * Restores a .zip backup (data + photos) or an older .json one. Parses first, so a bad file
+     * never touches the database. Replaces everything on success.
+     */
     suspend fun importBackup(input: InputStream): BackupData {
-        val text = input.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val data = BackupJson.decode(text)
+        val bytes = input.use { it.readBytes() }
+        val isZip = bytes.size > 2 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
+        var text: String? = null
+        val photos = HashMap<String, ByteArray>()
+        if (isZip) {
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                while (true) {
+                    val e = zip.nextEntry ?: break
+                    when {
+                        e.name == BACKUP_JSON -> text = zip.readBytes().toString(Charsets.UTF_8)
+                        // Only plain names inside receipts/, never paths that could escape the folder.
+                        e.name.matches(Regex("receipts/[A-Za-z0-9._-]+")) -> photos[e.name.removePrefix("receipts/")] = zip.readBytes()
+                    }
+                }
+            }
+        } else {
+            text = bytes.toString(Charsets.UTF_8)
+        }
+        val data = BackupJson.decode(text ?: throw UserError("This isn't a KYE backup file"))
         db.withTransaction {
+            backupDao.clearAttachments()
+            backupDao.clearWarranties()
+            backupDao.clearGoals()
             backupDao.clearLoanPayments()
             backupDao.clearLoans()
             backupDao.clearEvents()
@@ -660,6 +827,13 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
             backupDao.insertLoans(data.loans)
             backupDao.insertLoanPayments(data.loanPayments)
             backupDao.insertEvents(data.events)
+            backupDao.insertGoals(data.goals)
+            backupDao.insertAttachments(data.attachments)
+            backupDao.insertWarranties(data.warranties)
+        }
+        receiptsDir?.let { dir ->
+            dir.mkdirs()
+            photos.forEach { (name, content) -> File(dir, name).writeBytes(content) }
         }
         keywordCache = null
         // A backup from an older app version gets any newer built-in categories on top.
@@ -670,6 +844,9 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
 }
 
 const val OTHERS = "Others"
+
+/** The data file inside a .zip backup. */
+private const val BACKUP_JSON = "kye-backup.json"
 
 /** Keywords the user adds or names they type outrank the built-in ones (1–3), but not learned corrections (5). */
 private const val USER_WEIGHT = 4

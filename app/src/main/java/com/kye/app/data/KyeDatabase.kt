@@ -22,9 +22,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         KeywordRule::class,
         Loan::class,
         LoanPayment::class,
-        Event::class
+        Event::class,
+        Attachment::class,
+        Warranty::class,
+        Goal::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class KyeDatabase : RoomDatabase() {
@@ -36,6 +39,7 @@ abstract class KyeDatabase : RoomDatabase() {
     abstract fun backupDao(): BackupDao
     abstract fun loanDao(): LoanDao
     abstract fun eventDao(): EventDao
+    abstract fun extrasDao(): ExtrasDao
 
     companion object {
         /** v2: "Others" subcategories get an explicit flag; a detected-payment table (dropped again in v3). Shipped, so never edit. */
@@ -96,7 +100,31 @@ abstract class KyeDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        /** v6: receipt photos, warranties, savings goals. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `attachment` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`txnId` INTEGER NOT NULL, `fileName` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                        "FOREIGN KEY(`txnId`) REFERENCES `txn`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_attachment_txnId` ON `attachment` (`txnId`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `warranty` (`txnId` INTEGER NOT NULL, `untilDate` INTEGER NOT NULL, " +
+                        "`stage` INTEGER NOT NULL, PRIMARY KEY(`txnId`), " +
+                        "FOREIGN KEY(`txnId`) REFERENCES `txn`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `goal` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `emoji` TEXT NOT NULL, `targetPaise` INTEGER NOT NULL, " +
+                        "`targetDate` INTEGER, `isClosed` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE `txn` ADD COLUMN `goalId` INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_txn_goalId` ON `txn` (`goalId`)")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
         fun build(context: Context): KyeDatabase =
             Room.databaseBuilder(context, KyeDatabase::class.java, "kye.db")
