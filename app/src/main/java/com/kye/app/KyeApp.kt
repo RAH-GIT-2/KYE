@@ -75,6 +75,7 @@ open class KyeApp : Application() {
         container.repo.loansToRemind(today).forEach { Notifier.showLoanReminder(this, it, hide) }
         container.repo.warrantiesToRemind(today).forEach { (txn, w) -> Notifier.showWarrantyReminder(this, txn, w) }
         container.repo.schemesToRemind(today).forEach { Notifier.showSchemeReminder(this, it, hide) }
+        container.repo.renewalsToRemind(today).forEach { Notifier.showRenewalReminder(this, it, hide) }
         container.repo.cleanUpReceipts()
     }
 

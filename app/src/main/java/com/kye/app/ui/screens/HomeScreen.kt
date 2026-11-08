@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.kye.app.ui.components.ChoiceChip
@@ -78,6 +79,9 @@ fun HomeScreen(
     onGoal: (Long) -> Unit,
     onScheme: (Long) -> Unit
 ) {
+    val catMap by vm.categoryMap.collectAsStateWithLifecycle()
+    val allSubs by vm.allSubcategories.collectAsStateWithLifecycle()
+    val subMap = remember(allSubs) { allSubs.associateBy { it.id } }
     val schemeRows by vm.schemes.collectAsStateWithLifecycle()
     // Only schemes that need something soon: an instalment due within 5 days, missed, or ready to redeem.
     val schemesDue = schemeRows.filter { r ->
@@ -283,10 +287,16 @@ fun HomeScreen(
                             CategoryAvatar(u.emoji, u.color, 36.dp)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(u.rule.name, style = MaterialTheme.typography.titleSmall)
+                                // Same as History and Recurring: subcategory (or category) on top, the name below.
+                                val sub = u.rule.subcategoryId?.let { subMap[it] }?.takeIf { !it.isDefault }?.name
+                                val title = sub ?: u.rule.categoryId?.let { catMap[it]?.name } ?: u.rule.name
+                                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 val overdue = u.due.isBefore(today)
+                                val name = u.rule.name.trim().takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) }
+                                val whenText = if (overdue) "Overdue · ${Dates.label(u.due, today)}" else Dates.label(u.due, today)
                                 Text(
-                                    if (overdue) "Overdue · ${Dates.label(u.due, today)}" else Dates.label(u.due, today),
+                                    listOfNotNull(name, whenText).joinToString(" · "),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (overdue) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )

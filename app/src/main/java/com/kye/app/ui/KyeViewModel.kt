@@ -262,6 +262,51 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------- Changing several entries at once (History selection) ----------
+
+    private fun selectedTxns(ids: Set<Long>): List<Txn> = txns.value.filter { it.txn.id in ids }.map { it.txn }
+
+    private fun bulk(ids: Set<Long>, verb: String, onDone: (String) -> Unit, change: suspend (List<Txn>) -> Unit) {
+        val list = selectedTxns(ids)
+        viewModelScope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    change(list)
+                    "$verb ${list.size} ${if (list.size == 1) "entry" else "entries"}"
+                } catch (e: UserError) {
+                    e.message ?: "Couldn't change them"
+                } catch (e: Exception) {
+                    "Couldn't change them"
+                }
+            }
+            onDone(msg)
+        }
+    }
+
+    /** New category for each entry; its type follows the category (e.g. a transfer subcategory). */
+    fun bulkCategory(ids: Set<Long>, categoryId: Long, subcategoryId: Long?, onDone: (String) -> Unit) {
+        val sub = subcategoryId ?: allSubcategories.value.firstOrNull { it.categoryId == categoryId && it.isDefault }?.id
+        bulk(ids, "Moved", onDone) { list ->
+            repo.updateTxns(list.map { t ->
+                val type = typeFor(categoryId, sub, t.type)
+                t.copy(
+                    categoryId = categoryId, subcategoryId = sub, type = type,
+                    goalId = t.goalId.takeIf { type == TxnType.SAVING || type == TxnType.TRANSFER },
+                    schemeId = t.schemeId.takeIf { type == TxnType.SAVING }
+                )
+            })
+        }
+    }
+
+    fun bulkPayment(ids: Set<Long>, mode: PaymentMode, onDone: (String) -> Unit) =
+        bulk(ids, "Updated", onDone) { list -> repo.updateTxns(list.map { it.copy(paymentMode = mode) }) }
+
+    fun bulkEvent(ids: Set<Long>, eventId: Long?, onDone: (String) -> Unit) =
+        bulk(ids, if (eventId == null) "Untagged" else "Tagged", onDone) { list -> repo.updateTxns(list.map { it.copy(eventId = eventId) }) }
+
+    fun bulkDelete(ids: Set<Long>, onDone: (String) -> Unit) =
+        bulk(ids, "Deleted", onDone) { list -> repo.deleteTxns(list) }
+
     fun undoAdd(id: Long) {
         viewModelScope.launch(Dispatchers.IO) { repo.getTxn(id)?.let { repo.deleteTxn(it) } }
     }

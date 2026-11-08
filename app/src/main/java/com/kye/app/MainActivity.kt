@@ -88,6 +88,7 @@ import com.kye.app.ui.screens.GoalDetailScreen
 import com.kye.app.ui.screens.GoalsScreen
 import com.kye.app.ui.screens.GoldSchemeDetailScreen
 import com.kye.app.ui.screens.GoldSchemesScreen
+import com.kye.app.ui.screens.SubscriptionsScreen
 import com.kye.app.ui.screens.ImportScreen
 import com.kye.app.ui.screens.WarrantiesScreen
 import com.kye.app.ui.screens.LoanDetailScreen
@@ -335,6 +336,9 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
             ) { e ->
                 GoldSchemeDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
+            composable("subscriptions") {
+                SubscriptionsScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") }, onNew = { nav.navigate("rule") }) { nav.popBackStack() }
+            }
             composable("warranties") { WarrantiesScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() } }
             composable("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
             composable(
@@ -392,6 +396,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onImport = { nav.navigate("import") },
                     onLoans = { nav.navigate("loans") },
                     onEvents = { nav.navigate("events") },
+                    onSubscriptions = { nav.navigate("subscriptions") },
                     onGoals = { nav.navigate("goals") },
                     onSchemes = { nav.navigate("schemes") },
                     onWarranties = { nav.navigate("warranties") }

@@ -85,6 +85,32 @@ object Notifier {
         )
     }
 
+    /** "Prime renews on 14 Nov · ₹1,499". A week before a yearly subscription is added again. */
+    @SuppressLint("MissingPermission")
+    fun showRenewalReminder(context: Context, rule: RecurringRule, hideAmounts: Boolean) {
+        if (!canNotify(context)) return
+        val due = LocalDate.ofEpochDay(rule.nextDueDate)
+        val id = 400_000 + rule.id.toInt()
+        val open = PendingIntent.getActivity(
+            context, id,
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        NotificationManagerCompat.from(context).notify(
+            id,
+            NotificationCompat.Builder(context, CHANNEL_BILLS)
+                .setSmallIcon(R.drawable.ic_stat_kye)
+                .setContentTitle("${rule.name} renews ${Dates.label(due).let { if (it == "Tomorrow") "tomorrow" else "on $it" }}")
+                .setContentText(
+                    (if (hideAmounts) "" else "${Money.format(rule.amountPaise)} · ") +
+                        "Still using it? Cancel before then, or pause it in Recurring"
+                )
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+        )
+    }
+
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(

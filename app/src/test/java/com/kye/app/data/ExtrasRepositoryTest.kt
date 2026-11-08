@@ -253,4 +253,21 @@ class ExtrasRepositoryTest {
         val broken = out.toByteArray().copyOf(40)
         assertTrue(runCatching { repo.previewBackup(ByteArrayInputStream(broken)) }.exceptionOrNull() is UserError)
     }
+
+    @Test fun bulkUpdateAndDeleteEntries() = runBlocking {
+        val a = buy(100, "A")
+        val b = buy(200, "B")
+        val c = buy(300, "C")
+        repo.addAttachment(b, photo("r-b.jpg"))
+        repo.updateTxns(listOf(repo.getTxn(a)!!, repo.getTxn(b)!!).map { it.copy(paymentMode = PaymentMode.CASH) })
+        assertEquals(PaymentMode.CASH, repo.getTxn(a)!!.paymentMode)
+        assertEquals(PaymentMode.CASH, repo.getTxn(b)!!.paymentMode)
+        assertEquals(PaymentMode.CREDIT_CARD, repo.getTxn(c)!!.paymentMode)
+
+        repo.deleteTxns(listOf(repo.getTxn(a)!!, repo.getTxn(b)!!))
+        assertNull(repo.getTxn(a))
+        assertNull(repo.getTxn(b))
+        assertFalse("photo file removed", File(dir, "r-b.jpg").exists())
+        assertEquals(300_00L, repo.getTxn(c)!!.amountPaise)
+    }
 }

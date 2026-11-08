@@ -7,6 +7,7 @@ import com.kye.app.domain.Events
 import com.kye.app.domain.GoldSchemes
 import com.kye.app.domain.MonthlyReport
 import com.kye.app.domain.Reports
+import com.kye.app.domain.Subscriptions
 import com.kye.app.domain.Loans
 import com.kye.app.domain.Money
 import com.kye.app.domain.Recurrence
@@ -327,6 +328,19 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
 
     private fun receiptFile(name: String): File? = receiptsDir?.let { File(it, name) }
 
+    /** Saves several edited entries together (History: change category, payment or event). */
+    suspend fun updateTxns(txns: List<Txn>) {
+        val now = System.currentTimeMillis()
+        db.withTransaction { txns.forEach { txnDao.update(it.copy(updatedAt = now)) } }
+    }
+
+    /** Deletes several entries with their photos and warranties. */
+    suspend fun deleteTxns(txns: List<Txn>) {
+        val files = txns.flatMap { t -> db.extrasDao().attachmentsOf(t.id).map { it.fileName } }
+        db.withTransaction { txns.forEach { txnDao.delete(it) } }
+        files.forEach { receiptFile(it)?.delete() }
+    }
+
     /** Saves and returns a budget alert message if this entry crossed 80% or 100% of a budget. */
     suspend fun saveWithBudgetCheck(txn: Txn, categoryName: String?): String? = saveChecked(txn, categoryName).second
 
@@ -480,6 +494,17 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
             if (rule != original) recurringDao.upsert(rule)
         }
         reminders
+    }
+
+    /**
+     * Yearly (or 3-monthly+) subscriptions that renew within a week; each is marked so it's mentioned
+     * once per renewal. The mark is cleared when the renewal is added.
+     */
+    suspend fun renewalsToRemind(today: LocalDate): List<RecurringRule> = recurringLock.withLock {
+        val cats = categoryDao.allCategories().associateBy { it.id }
+        recurringDao.active()
+            .filter { Subscriptions.isSubscription(it, cats) && Subscriptions.needsRenewalNotice(it, today) }
+            .onEach { recurringDao.upsert(it.copy(lastRemindedFor = it.nextDueDate)) }
     }
 
     // ---------- Budgets ----------
