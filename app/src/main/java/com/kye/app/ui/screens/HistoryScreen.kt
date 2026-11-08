@@ -22,6 +22,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
+import android.widget.Toast
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
+import com.kye.app.data.TxnRow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -53,6 +58,31 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var typeFilter by remember { mutableStateOf<TxnType?>(null) }
     var catFilter by remember { mutableStateOf<Long?>(null) }
+    var againFor by remember { mutableStateOf<TxnRow?>(null) }
+    val context = LocalContext.current
+
+    // Long-press an entry → add the same again for now.
+    againFor?.let { row ->
+        AlertDialog(
+            onDismissRequest = { againFor = null },
+            title = { Text("Add again for now?") },
+            text = {
+                Text(
+                    listOfNotNull(row.title, Money.format(row.txn.amountPaise, showPaise = true), row.txn.paymentMode.label, row.txn.note.ifBlank { null })
+                        .joinToString(" · ")
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    againFor = null
+                    vm.addAgain(row.txn) { _, msg ->
+                        Toast.makeText(context, msg ?: "Added for today", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { againFor = null }) { Text("Cancel") } }
+        )
+    }
 
     val grouped = remember(all, query, typeFilter, catFilter) {
         val q = query.trim().lowercase()
@@ -137,7 +167,7 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
                 }
             }
             items(rows, key = { it.txn.id }) { row ->
-                TxnItem(row, Modifier.animateItem(), showDate = false) { onOpenTxn(row.txn.id) }
+                TxnItem(row, Modifier.animateItem(), showDate = false, onLongClick = { againFor = row }) { onOpenTxn(row.txn.id) }
             }
         }
     }

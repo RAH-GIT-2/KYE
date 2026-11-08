@@ -306,11 +306,11 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
     suspend fun deleteTxn(txn: Txn) = txnDao.delete(txn)
 
     /** Saves and returns a budget alert message if this entry crossed 80% or 100% of a budget. */
-    suspend fun saveWithBudgetCheck(txn: Txn, categoryName: String?): String? {
-        if (txn.type != TxnType.EXPENSE) {
-            saveTxn(txn)
-            return null
-        }
+    suspend fun saveWithBudgetCheck(txn: Txn, categoryName: String?): String? = saveChecked(txn, categoryName).second
+
+    /** Like [saveWithBudgetCheck], also returning the entry's id (for Undo). */
+    suspend fun saveChecked(txn: Txn, categoryName: String?): Pair<Long, String?> {
+        if (txn.type != TxnType.EXPENSE) return saveTxn(txn) to null
         val day = Dates.toLocalDate(txn.dateTime)
         val from = Dates.startOfDay(day.withDayOfMonth(1))
         val to = Dates.endOfDay(day.withDayOfMonth(day.lengthOfMonth()))
@@ -320,7 +320,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
 
         val beforeCat = if (catLimit != null) txnDao.sumExpense(from, to, txn.categoryId) else 0L
         val beforeAll = if (overallLimit != null) txnDao.sumExpense(from, to, null) else 0L
-        saveTxn(txn)
+        val id = saveTxn(txn)
         val afterCat = if (catLimit != null) txnDao.sumExpense(from, to, txn.categoryId) else 0L
         val afterAll = if (overallLimit != null) txnDao.sumExpense(from, to, null) else 0L
 
@@ -336,7 +336,7 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs) {
                 messages += if (it == 100) "Monthly budget exceeded" else "Monthly budget 80% used"
             }
         }
-        return messages.joinToString("\n").ifBlank { null }
+        return id to messages.joinToString("\n").ifBlank { null }
     }
 
     private fun crossed(before: Long, after: Long, limit: Long): Int? {

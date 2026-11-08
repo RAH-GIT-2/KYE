@@ -142,4 +142,42 @@ class VoiceParserTest {
         assertNull(e.amountPaise)
         assertEquals(sub("Food & Dining/Swiggy"), e.subcategoryId)
     }
+
+    // ---------- Split ----------
+
+    @Test fun splitFourWays() {
+        val e = one("dinner 1200 split 4")
+        assertEquals(30_000L, e.amountPaise)
+        assertEquals(4, e.splitWays)
+        // "dinner" picked the category, so (as always) it isn't repeated in the note.
+        assertEquals("₹1,200 split 4 ways", e.note)
+        assertEquals(cat("Food & Dining"), e.categoryId)
+    }
+
+    @Test fun splitWithFriendsCountsYouToo() {
+        val e = one("auto 300 split with 2 friends")
+        assertEquals(10_000L, e.amountPaise)
+        assertEquals(3, e.splitWays)
+        assertEquals(sub("Commute/Auto"), e.subcategoryId)
+    }
+
+    @Test fun splitWordsAndWays() {
+        assertEquals(40_000L, one("swiggy 1200 three ways").amountPaise)
+        assertEquals(50_000L, one("movie 1000 split in rendu").amountPaise)
+        // Uneven split rounds to the paisa: 1000 / 3 = 333.33
+        assertEquals(33_333L, one("party 1000 split 3 ways").amountPaise)
+    }
+
+    @Test fun shareAutoIsNotASplit() {
+        val e = one("share auto 30")
+        assertEquals(3_000L, e.amountPaise)
+        assertEquals(1, e.splitWays)
+        assertEquals(sub("Commute/Auto"), e.subcategoryId)
+    }
+
+    @Test fun splitShareMaths() {
+        assertEquals(30_000L, VoiceParser.splitShare(120_000, 4))
+        assertEquals(120_000L, VoiceParser.splitShare(120_000, 1))
+        assertEquals(33_334L, VoiceParser.splitShare(100_001, 3))
+    }
 }

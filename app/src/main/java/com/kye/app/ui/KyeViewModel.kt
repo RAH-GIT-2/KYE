@@ -17,6 +17,7 @@ import com.kye.app.domain.Ask
 import com.kye.app.domain.AskAnswer
 import com.kye.app.domain.AskKeyword
 import com.kye.app.domain.LoanSummary
+import com.kye.app.domain.Repeats
 import com.kye.app.domain.Loans
 import com.kye.app.data.UserError
 import com.kye.app.data.ImportEntry
@@ -130,6 +131,22 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     fun setLoanClosed(id: Long, closed: Boolean, onError: (String) -> Unit) = change(onError) { repo.setLoanClosed(id, closed) }
 
     fun deleteLoan(id: Long, onError: (String) -> Unit, onDone: () -> Unit) = change(onError, onDone) { repo.deleteLoan(id) }
+
+    // ---------- Add again ----------
+
+    /** Copies [template] as a new entry for right now. Calls back with its id (for Undo) and any budget alert. */
+    fun addAgain(template: Txn, onDone: (Long, String?) -> Unit) {
+        viewModelScope.launch {
+            val txn = Repeats.again(template, System.currentTimeMillis())
+            val name = txn.categoryId?.let { categoryMap.value[it]?.name }
+            val (id, msg) = withContext(Dispatchers.IO) { repo.saveChecked(txn, name) }
+            onDone(id, msg)
+        }
+    }
+
+    fun undoAdd(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) { repo.getTxn(id)?.let { repo.deleteTxn(it) } }
+    }
 
     // ---------- Ask KYE ----------
 

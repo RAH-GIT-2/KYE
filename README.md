@@ -59,6 +59,10 @@ Without that file the release build falls back to the debug key, so it still bui
 
 - **Ask KYE** (Home: "Ask" bar, or its mic): type or say a question, answered offline from your own data. "How much on Swiggy this month", "petrol last 3 months", "food in October", "what did I spend yesterday", "biggest expense this month", "how many times Swiggy", "food per day", "income this month", "cash spending this week", "who owes me". Tanglish: "intha maasam swiggy evlo", "nethu evlo selavu". Shows how the question was read, a comparison with the period before, and the matching entries.
 
+- **Split a bill**: say or type "dinner 1200 split 4" / "auto 300 split with 2 friends" ("with" counts you too), or use the Split chips under the amount on the + screen. Only your share is saved; the note keeps "₹1,200 split 4 ways".
+- **Add again**: things you've added 3+ times in the last 30 days with the same amount appear as one-tap chips on Home ("☕ Tea ₹20"), with Undo. Long-press any entry in History → "Add again for now".
+- **App shortcuts**: long-press the KYE icon for Speak expense, Add entry and Ask KYE (drag them onto the home screen too). "Hey Google, open KYE" works; passing an amount straight from Assistant needs a Play Store app (App Actions).
+
 ## Not yet built
 App lock, home-screen widget, receipt photos, event budgets, per-subcategory budgets.
 

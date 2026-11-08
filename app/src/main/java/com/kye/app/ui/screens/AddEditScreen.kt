@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import com.kye.app.voice.VoiceParser
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -100,6 +102,7 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var date by remember { mutableStateOf(LocalDate.now()) }
     var payment by remember { mutableStateOf(PaymentMode.UPI) }
     var note by remember { mutableStateOf("") }
+    var splitWays by remember { mutableIntStateOf(1) }
     var repeat by remember { mutableStateOf(false) }
     var repeatUnit by remember { mutableStateOf(RepeatUnit.MONTH) }
     var repeatEvery by remember { mutableIntStateOf(1) }
@@ -159,10 +162,16 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
         .filter { it.kind == kind }
 
     fun save() {
-        val paise = Money.parseToPaise(amount)
-        if (paise == null || paise <= 0) {
+        val total = Money.parseToPaise(amount)
+        if (total == null || total <= 0) {
             Toast.makeText(context, "Enter an amount", Toast.LENGTH_SHORT).show()
             return
+        }
+        val split = existing == null && splitWays > 1
+        val paise = if (split) VoiceParser.splitShare(total, splitWays) else total
+        if (split) {
+            val tag = "${Money.format(total, showPaise = true)} split $splitWays ways"
+            if (!note.contains(tag)) note = listOf(note.trim(), tag).filter { it.isNotBlank() }.joinToString(" · ")
         }
         val old = existing
         val time = when {
@@ -291,6 +300,32 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
                 )
             )
+
+            // Split a shared bill: only your share is saved.
+            if (existing == null) {
+                Column {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Label("Split")
+                        Spacer(Modifier.width(4.dp))
+                        listOf(1, 2, 3, 4, 5, 6).forEach { n ->
+                            ChoiceChip(if (n == 1) "No" else "$n", splitWays == n, { splitWays = n })
+                        }
+                    }
+                    val total = Money.parseToPaise(amount)
+                    if (splitWays > 1 && total != null && total > 0) {
+                        Text(
+                            "Your share: ${Money.format(VoiceParser.splitShare(total, splitWays), showPaise = true)} " +
+                                "of ${Money.format(total, showPaise = true)} · only your share is saved",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { Label("Category") }

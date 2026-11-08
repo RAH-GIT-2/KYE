@@ -21,7 +21,8 @@ data class HomeState(
     val recent: List<TxnRow> = emptyList(),
     val upcoming: List<UpcomingBill> = emptyList(),
     val forecast: Forecast? = null,
-    val highlights: List<Highlight> = emptyList()
+    val highlights: List<Highlight> = emptyList(),
+    val repeats: List<RepeatSuggestion> = emptyList()
 )
 
 enum class Period(val label: String) {
@@ -116,7 +117,8 @@ object Stats {
             recent = txns.take(8),
             upcoming = upcoming(rules, cats, today, 30).take(3),
             forecast = Insights.forecast(txns, rules, budgets[0L], today),
-            highlights = Insights.highlights(txns, budgets, cats, today)
+            highlights = Insights.highlights(txns, budgets, cats, today),
+            repeats = Repeats.suggest(txns, today)
         )
     }
 

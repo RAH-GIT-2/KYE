@@ -46,7 +46,7 @@ class AppStartTest {
 
     @Test
     fun widgetAndTileButtonsOpenTheApp() {
-        listOf(MainActivity.ACTION_VOICE, MainActivity.ACTION_ADD).forEach { action ->
+        listOf(MainActivity.ACTION_VOICE, MainActivity.ACTION_ADD, MainActivity.ACTION_ASK).forEach { action ->
             val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
                 .putExtra(MainActivity.EXTRA_ACTION, action)
             ActivityScenario.launch<MainActivity>(intent).use { scenario ->

@@ -2,4 +2,10 @@
     <string name="app_name">KYE</string>
     <string name="widget_description">Today\'s spend, with quick + and mic buttons</string>
     <string name="tile_label">Speak expense</string>
+    <string name="shortcut_speak_short">Speak expense</string>
+    <string name="shortcut_speak_long">Speak an expense</string>
+    <string name="shortcut_add_short">Add entry</string>
+    <string name="shortcut_add_long">Add an entry</string>
+    <string name="shortcut_ask_short">Ask KYE</string>
+    <string name="shortcut_ask_long">Ask about your money</string>
 </resources>

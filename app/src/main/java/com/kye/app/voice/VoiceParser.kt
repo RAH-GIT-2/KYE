@@ -1,6 +1,7 @@
 package com.kye.app.voice
 
 import com.kye.app.data.PaymentMode
+import com.kye.app.domain.Money
 import java.math.BigDecimal
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -18,7 +19,9 @@ data class ParsedEntry(
     val paymentMode: PaymentMode?,
     val note: String,
     val matchedPhrase: String?,
-    val raw: String
+    val raw: String,
+    /** People the bill was split between; [amountPaise] is already your share. 1 = not split. */
+    val splitWays: Int = 1
 )
 
 /**
@@ -174,6 +177,49 @@ object VoiceParser {
 
     private data class Amount(val paise: Long, val range: IntRange)
 
+    private val SPLIT_WORDS = setOf("split", "share", "divide", "divided", "pirichu", "pangu")
+    private val SPLIT_LINKS = setOf("in", "into", "between", "among", "by", "with", "equally", "to", "for")
+    private val PEOPLE_WORDS = setOf("ways", "way", "people", "persons", "members", "friends", "others", "peru", "perukku")
+    private val SPLIT_NUMBERS = mapOf(
+        "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10,
+        "rendu" to 2, "moonu" to 3, "naalu" to 4, "nalu" to 4, "anju" to 5, "aaru" to 6, "ezhu" to 7, "ettu" to 8, "pathu" to 10
+    )
+
+    /**
+     * People a bill is split between. "split 4" / "split 4 ways" / "split in 3" / "4 ways" = that many
+     * people in all; "split with 2 (friends)" = you and 2 others = 3. Marks the words as used.
+     */
+    private fun splitWays(tokens: List<String>, used: BooleanArray): Int {
+        fun num(t: String?): Int? = t?.toIntOrNull()?.takeIf { it in 2..50 } ?: SPLIT_NUMBERS[t]
+        for (i in tokens.indices) {
+            if (used[i]) continue
+            if (tokens[i] in SPLIT_WORDS) {
+                var j = i + 1
+                var with = false
+                while (j < tokens.size && tokens[j] in SPLIT_LINKS) {
+                    if (tokens[j] == "with") with = true
+                    j++
+                }
+                val n = num(tokens.getOrNull(j)) ?: continue
+                val end = if (tokens.getOrNull(j + 1) in PEOPLE_WORDS) j + 1 else j
+                for (k in i..end) used[k] = true
+                return if (with) n + 1 else n
+            }
+            // "1200 4 ways" without the word split
+            val n = num(tokens[i])
+            if (n != null && tokens.getOrNull(i + 1) == "ways") {
+                used[i] = true
+                used[i + 1] = true
+                return n
+            }
+        }
+        return 1
+    }
+
+    /** Your share, rounded to the paisa. */
+    fun splitShare(totalPaise: Long, ways: Int): Long =
+        if (ways <= 1) totalPaise else (totalPaise + ways / 2) / ways
+
     private fun findAmount(tokens: List<String>, used: BooleanArray): Amount? {
         // 1) Digits first: "450", "1.5k", "2 thousand", "450la". The largest wins ("1mg 450" → 450).
         var bestDigit: Amount? = null
@@ -257,6 +303,8 @@ object VoiceParser {
     ): ParsedEntry {
         val used = BooleanArray(tokens.size)
 
+        // "split 4" must not be read as the amount, so it's found first.
+        val ways = splitWays(tokens, used)
         val amount = findAmount(tokens, used)
         amount?.range?.forEach { used[it] = true }
 
@@ -316,14 +364,20 @@ object VoiceParser {
             }
         }
 
-        val note = tokens.indices
+        val words = tokens.indices
             .filter { !used[it] && tokens[it] !in FILLERS && tokens[it] != "," }
             .joinToString(" ") { tokens[it] }
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+        val share = amount?.paise?.let { splitShare(it, ways) }
+        // Keep the full bill in the note: "Dinner · ₹1,200 split 4 ways".
+        val note = if (ways > 1 && amount != null) {
+            listOf(words, "${Money.format(amount.paise, showPaise = true)} split $ways ways").filter { it.isNotBlank() }.joinToString(" · ")
+        } else words
 
         if (categoryId == null) subId = null
         return ParsedEntry(
-            amountPaise = amount?.paise,
+            splitWays = ways,
+            amountPaise = share,
             categoryId = categoryId,
             subcategoryId = subId,
             date = date,

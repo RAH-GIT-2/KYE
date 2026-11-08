@@ -1,5 +1,17 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package com.kye.app.ui.screens
 
+import android.widget.Toast
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.kye.app.ui.components.ChoiceChip
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,6 +76,15 @@ fun HomeScreen(
     val s by vm.home.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val loans by vm.loanSummary.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var justAdded by remember { mutableStateOf<Pair<Long, String>?>(null) }
+    // The Undo offer fades after a few seconds.
+    LaunchedEffect(justAdded) {
+        if (justAdded != null) {
+            delay(8_000)
+            justAdded = null
+        }
+    }
     val today = LocalDate.now()
 
     LazyColumn(
@@ -111,6 +132,37 @@ fun HomeScreen(
                 )
                 IconButton(onClick = { onAsk(true) }) {
                     Icon(Icons.Rounded.Mic, contentDescription = "Ask by voice", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+
+        if (s.repeats.isNotEmpty()) {
+            item(key = "repeats") {
+                SectionCard(title = "Add again", subtitle = "Things you add often · one tap adds it for now") {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        s.repeats.forEach { r ->
+                            ChoiceChip(
+                                "${r.label} ${Money.format(r.amountPaise, showPaise = true)}",
+                                false,
+                                {
+                                    vm.addAgain(r.template) { id, msg ->
+                                        justAdded = id to "${r.label} ${Money.format(r.amountPaise, showPaise = true)}"
+                                        if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                leading = r.emoji
+                            )
+                        }
+                    }
+                    justAdded?.let { (id, label) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Added $label", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                vm.undoAdd(id)
+                                justAdded = null
+                            }) { Text("Undo") }
+                        }
+                    }
                 }
             }
         }

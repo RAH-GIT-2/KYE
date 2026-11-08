@@ -158,6 +158,7 @@ class MainActivity : FragmentActivity() {
         const val EXTRA_ACTION = "kye.action"
         const val ACTION_VOICE = "voice"
         const val ACTION_ADD = "add"
+        const val ACTION_ASK = "ask"
 
         /** Last time KYE was open and unlocked. Kept for the whole process, across rotations. */
         private var lastSeen = 0L
@@ -207,6 +208,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
         when (action.value) {
             MainActivity.ACTION_VOICE -> if (showMic) vm.voiceOpen = true else nav.navigate("add")
             MainActivity.ACTION_ADD -> nav.navigate("add")
+            MainActivity.ACTION_ASK -> nav.navigate("ask?mic=false")
         }
         action.value = null
     }
