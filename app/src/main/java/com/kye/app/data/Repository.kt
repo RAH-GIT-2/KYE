@@ -873,25 +873,53 @@ class Repository(private val db: KyeDatabase, private val prefs: Prefs, private 
      * never touches the database. Replaces everything on success.
      */
     suspend fun importBackup(input: InputStream): BackupData {
-        val bytes = input.use { it.readBytes() }
+        val (data, photos) = readBackup(input.use { it.readBytes() })
+        return restore(data, photos)
+    }
+
+    /** What a backup file holds, compared with this phone, so Restore can say what it will replace. */
+    suspend fun previewBackup(input: InputStream): BackupPreview {
+        val (data, photos) = readBackup(input.use { it.readBytes() })
+        val dates = data.txns.map { it.dateTime }
+        return BackupPreview(
+            exportedAt = data.exportedAt,
+            entries = data.txns.size,
+            photos = photos.size,
+            categories = data.categories.size,
+            firstEntry = dates.minOrNull(),
+            lastEntry = dates.maxOrNull(),
+            entriesHere = backupDao.txns().size,
+            photosHere = backupDao.attachments().size
+        )
+    }
+
+    /** Parses a .zip (data + photos) or older .json backup. Throws [UserError] for anything else. */
+    private fun readBackup(bytes: ByteArray): Pair<BackupData, Map<String, ByteArray>> {
         val isZip = bytes.size > 2 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
         var text: String? = null
         val photos = HashMap<String, ByteArray>()
         if (isZip) {
-            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-                while (true) {
-                    val e = zip.nextEntry ?: break
-                    when {
-                        e.name == BACKUP_JSON -> text = zip.readBytes().toString(Charsets.UTF_8)
-                        // Only plain names inside receipts/, never paths that could escape the folder.
-                        e.name.matches(Regex("receipts/[A-Za-z0-9._-]+")) -> photos[e.name.removePrefix("receipts/")] = zip.readBytes()
+            try {
+                ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                    while (true) {
+                        val e = zip.nextEntry ?: break
+                        when {
+                            e.name == BACKUP_JSON -> text = zip.readBytes().toString(Charsets.UTF_8)
+                            // Only plain names inside receipts/, never paths that could escape the folder.
+                            e.name.matches(Regex("receipts/[A-Za-z0-9._-]+")) -> photos[e.name.removePrefix("receipts/")] = zip.readBytes()
+                        }
                     }
                 }
+            } catch (e: java.io.IOException) {
+                throw UserError("This backup file is damaged and can't be restored")
             }
         } else {
             text = bytes.toString(Charsets.UTF_8)
         }
-        val data = BackupJson.decode(text ?: throw UserError("This isn't a KYE backup file"))
+        return BackupJson.decode(text ?: throw UserError("This isn't a KYE backup file")) to photos
+    }
+
+    private suspend fun restore(data: BackupData, photos: Map<String, ByteArray>): BackupData {
         db.withTransaction {
             backupDao.clearAttachments()
             backupDao.clearWarranties()
@@ -947,3 +975,15 @@ data class ImportEntry(val txn: Txn, val newCategoryKey: String? = null, val new
 data class NewCategory(val key: String, val name: String, val kind: CategoryKind)
 
 private val IMPORT_COLORS = listOf(0xFF6C5CE7, 0xFF00B894, 0xFFE17055, 0xFF0984E3, 0xFFFDCB6E, 0xFFE84393)
+
+/** Shown before a restore: what the backup holds and what's on the phone now. Times in millis. */
+data class BackupPreview(
+    val exportedAt: Long?,
+    val entries: Int,
+    val photos: Int,
+    val categories: Int,
+    val firstEntry: Long?,
+    val lastEntry: Long?,
+    val entriesHere: Int,
+    val photosHere: Int
+)

@@ -17,7 +17,9 @@ data class BackupData(
     val attachments: List<Attachment> = emptyList(),
     val warranties: List<Warranty> = emptyList(),
     val goals: List<Goal> = emptyList(),
-    val schemes: List<GoldScheme> = emptyList()
+    val schemes: List<GoldScheme> = emptyList(),
+    /** When the backup was made (from the file), if known. */
+    val exportedAt: Long? = null
 )
 
 /**
@@ -228,7 +230,8 @@ object BackupJson {
             if (categories.isEmpty()) throw UserError("This backup has no categories")
             return BackupData(
                 root.optInt("seedVersion", 1), categories, subcategories, txnsChecked, rules, budgets, keywords,
-                loans, loanPayments, events, attachments, warranties, goals, schemes
+                loans, loanPayments, events, attachments, warranties, goals, schemes,
+                root.optLong("exportedAt").takeIf { it > 0 }
             )
         } catch (e: UserError) {
             throw e

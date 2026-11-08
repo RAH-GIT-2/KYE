@@ -124,7 +124,9 @@ fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit) {
                                 listOfNotNull(
                                     rule.name.trim().takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) },
                                     Recurrence.describe(rule.unit, rule.interval),
-                                    modeText
+                                    modeText,
+                                    // EMIs and other rules with an end: "17 left", or "Ended".
+                                    Recurrence.remaining(rule)?.let { if (it == 0) "Ended" else "$it left" }
                                 ).joinToString(" · "),
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall,

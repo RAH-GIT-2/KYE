@@ -234,4 +234,23 @@ class ExtrasRepositoryTest {
         val report = repo.monthlyReport(java.time.YearMonth.from(today), today)
         assertEquals(10_000_00L, report.saving)
     }
+
+    @Test fun restorePreviewDescribesTheBackupWithoutChangingAnything() = runBlocking {
+        repo.ensureSeeded()
+        buy(100, "First")
+        val out = ByteArrayOutputStream()
+        repo.exportBackup(out)
+        buy(200, "Second")
+
+        val p = repo.previewBackup(ByteArrayInputStream(out.toByteArray()))
+        assertEquals(1, p.entries)
+        assertEquals(2, p.entriesHere)
+        assertTrue(p.exportedAt != null)
+        assertEquals(p.firstEntry, p.lastEntry)
+        assertEquals("nothing replaced by a preview", 2, db.txnDao().allRows().size)
+
+        // A damaged zip is refused with a clear message.
+        val broken = out.toByteArray().copyOf(40)
+        assertTrue(runCatching { repo.previewBackup(ByteArrayInputStream(broken)) }.exceptionOrNull() is UserError)
+    }
 }

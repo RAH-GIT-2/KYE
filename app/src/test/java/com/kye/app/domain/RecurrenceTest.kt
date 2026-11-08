@@ -126,4 +126,26 @@ class RecurrenceTest {
         val opts = Recurrence.backfill(r, 0, listOf(txn(d(2026, 9, 5), ruleId = 7)), today)
         assertEquals(listOf(d(2026, 8, 5), d(2026, 10, 5), d(2026, 11, 5)), opts.map { it.date })
     }
+
+    // ---- Ends: on a date / after N times ----
+
+    @Test fun endAfterAndTimesUntilRoundTrip() {
+        val a = d(2026, 1, 31)
+        assertEquals(d(2027, 12, 31), Recurrence.endAfter(a, RepeatUnit.MONTH, 1, 24))
+        assertEquals(24, Recurrence.timesUntil(a, RepeatUnit.MONTH, 1, d(2027, 12, 31)))
+        assertEquals(2, Recurrence.timesUntil(a, RepeatUnit.MONTH, 1, d(2026, 2, 28)))
+        assertEquals(null, Recurrence.timesUntil(a, RepeatUnit.MONTH, 1, d(2026, 3, 15)))
+        assertEquals(a, Recurrence.endAfter(a, RepeatUnit.MONTH, 1, 1))
+    }
+
+    @Test fun remainingCountsFromTheNextDueDate() {
+        // 24-month EMI from 5 Jan 2026; 7 done, next is the 8th (5 Aug 2026).
+        val emi = rentRule(d(2026, 1, 5), end = d(2027, 12, 5)).copy(
+            occurrenceIndex = 7, nextDueDate = d(2026, 8, 5).toEpochDay()
+        )
+        assertEquals(17, Recurrence.remaining(emi))
+        assertEquals(null, Recurrence.remaining(rentRule(d(2026, 1, 5))))
+        assertEquals(0, Recurrence.remaining(emi.copy(isActive = false)))
+        assertEquals(0, Recurrence.remaining(emi.copy(nextDueDate = d(2028, 1, 5).toEpochDay())))
+    }
 }

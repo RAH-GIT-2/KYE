@@ -131,8 +131,18 @@ fun SettingsScreen(
         }
     }
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
+    var restorePreview by remember { mutableStateOf<com.kye.app.data.BackupPreview?>(null) }
     val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        restoreUri = uri
+        if (uri != null) {
+            // Read the file first: a wrong file is refused here, before anything is replaced.
+            vm.previewBackup(uri) { preview, error ->
+                if (preview == null) toast(error ?: "Can't read that file")
+                else {
+                    restorePreview = preview
+                    restoreUri = uri
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -247,10 +257,44 @@ fun SettingsScreen(
     }
 
     restoreUri?.let { uri ->
+        val p = restorePreview
         AlertDialog(
             onDismissRequest = { restoreUri = null },
             title = { Text("Replace everything?") },
-            text = { Text("All entries, categories and settings on this phone are replaced with the backup. Back up first if you're unsure.") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (p != null) {
+                        val made = p.exportedAt?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(BACKUP_TIME) }
+                        Text("This backup", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            listOfNotNull(
+                                made?.let { "Made $it" },
+                                "${p.entries} entries" + if (p.photos > 0) " · ${p.photos} bill photos" else "",
+                                if (p.firstEntry != null && p.lastEntry != null)
+                                    "From ${Dates.short(Dates.toLocalDate(p.firstEntry))} to ${Dates.short(Dates.toLocalDate(p.lastEntry))}" else null
+                            ).joinToString("\n"),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text("On this phone now", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "${p.entriesHere} entries" + if (p.photosHere > 0) " · ${p.photosHere} bill photos" else "",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        if (p.entries < p.entriesHere) {
+                            Text(
+                                "The backup has ${p.entriesHere - p.entries} fewer entries than this phone. They'd be lost.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    Text(
+                        "Everything on this phone is replaced with the backup. Back up first if you're unsure.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     restoreUri = null

@@ -500,7 +500,8 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         start: LocalDate,
         mode: RecurringMode,
         remindDaysBefore: Int,
-        active: Boolean
+        active: Boolean,
+        endDate: LocalDate? = null
     ): RecurringRule {
         val today = LocalDate.now()
         val scheduleChanged = base == null || base.unit != unit || base.interval != interval ||
@@ -508,6 +509,9 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
         val index = if (scheduleChanged) Recurrence.firstIndexOnOrAfter(start, unit, interval, today)
         else base!!.occurrenceIndex
         val next = Recurrence.occurrence(start, unit, interval, index)
+        // A rule that stopped only because it reached its end comes back on when the end is moved later.
+        val endedBefore = base != null && !base.isActive && base.endDate != null && base.nextDueDate > base.endDate
+        val reopen = endedBefore && (endDate == null || !next.isAfter(endDate))
         return RecurringRule(
             id = base?.id ?: 0,
             name = name,
@@ -523,8 +527,9 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
             nextDueDate = next.toEpochDay(),
             mode = mode,
             remindDaysBefore = remindDaysBefore,
-            isActive = active,
-            lastRemindedFor = if (scheduleChanged) null else base?.lastRemindedFor
+            isActive = active || reopen,
+            lastRemindedFor = if (scheduleChanged) null else base?.lastRemindedFor,
+            endDate = endDate?.toEpochDay()
         )
     }
 
@@ -641,6 +646,24 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun backupFolderName(folder: String?): String? =
         withContext(Dispatchers.IO) { AutoBackup.folderName(getApplication(), folder) }
+
+    /** Reads a picked backup without changing anything. Calls back with its preview, or an error message. */
+    fun previewBackup(uri: Uri, onDone: (com.kye.app.data.BackupPreview?, String?) -> Unit) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val p = getApplication<Application>().contentResolver.openInputStream(uri)?.use { repo.previewBackup(it) }
+                        ?: error("no stream")
+                    p to null
+                } catch (e: UserError) {
+                    null to (e.message ?: "Can't read that file")
+                } catch (e: Exception) {
+                    null to "Can't read that file"
+                }
+            }
+            onDone(result.first, result.second)
+        }
+    }
 
     fun importBackup(uri: Uri, onDone: (String) -> Unit) {
         viewModelScope.launch {

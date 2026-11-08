@@ -86,6 +86,11 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
     var mode by remember { mutableStateOf(RecurringMode.AUTO_ADD) }
     var remindBefore by remember { mutableIntStateOf(1) }
     var active by remember { mutableStateOf(true) }
+    // Ends: "never" | "date" | "times". Stored as an end date; "times" is worked out from it when it lands on a due date.
+    var endMode by remember { mutableStateOf("never") }
+    var endOn by remember { mutableStateOf(LocalDate.now().plusYears(1)) }
+    var endTimes by remember { mutableStateOf("12") }
+    var pickingEnd by remember { mutableStateOf(false) }
     var showDate by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var pendingBackfill by remember { mutableStateOf<Pair<RecurringRule, List<com.kye.app.domain.BackfillDate>>?>(null) }
@@ -105,21 +110,38 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
                 mode = r.mode
                 remindBefore = r.remindDaysBefore
                 active = r.isActive
+                r.endDate?.let { e ->
+                    val end = LocalDate.ofEpochDay(e)
+                    endOn = end
+                    val n = Recurrence.timesUntil(LocalDate.ofEpochDay(r.anchorDate), r.unit, r.interval, end)
+                    if (n != null) {
+                        endMode = "times"
+                        endTimes = n.toString()
+                    } else endMode = "date"
+                }
             }
         }
     }
 
     fun save() {
         val paise = if (amount.isBlank()) 0L else Money.parseToPaise(amount)
+        val times = endTimes.toIntOrNull()
+        val end: LocalDate? = when (endMode) {
+            "date" -> endOn
+            "times" -> times?.takeIf { it in 1..1200 }?.let { Recurrence.endAfter(start, unit, every, it) }
+            else -> null
+        }
         when {
             name.isBlank() -> Toast.makeText(context, "Give it a name, like \"House rent\"", Toast.LENGTH_SHORT).show()
             paise == null -> Toast.makeText(context, "Check the amount", Toast.LENGTH_SHORT).show()
             mode == RecurringMode.AUTO_ADD && paise <= 0 ->
                 Toast.makeText(context, "Auto-add needs a fixed amount. Use \"Remind me\" for bills that change.", Toast.LENGTH_LONG).show()
+            endMode == "times" && end == null -> Toast.makeText(context, "Enter how many times, from 1 to 1200", Toast.LENGTH_SHORT).show()
+            end != null && end.isBefore(start) -> Toast.makeText(context, "The end date is before the first due date", Toast.LENGTH_SHORT).show()
             else -> {
                 val rule = vm.newRule(
                     base, name.trim(), paise, catId, subId, payment, unit, every, start, mode,
-                    if (mode == RecurringMode.REMIND_ONLY) remindBefore else 0, active
+                    if (mode == RecurringMode.REMIND_ONLY) remindBefore else 0, active, end
                 )
                 // Starts in the past? Offer to fill in the past due dates first.
                 val options = vm.backfillOptions(base, rule)
@@ -196,6 +218,35 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
                 Text("Change", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
             }
 
+            Label("Ends")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChoiceChip("Never", endMode == "never", { endMode = "never" })
+                ChoiceChip("On a date", endMode == "date", { endMode = "date" })
+                ChoiceChip("After N times", endMode == "times", { endMode = "times" })
+            }
+            AnimatedVisibility(endMode == "date") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Last on or before", modifier = Modifier.weight(1f))
+                    TextButton(onClick = { pickingEnd = true }) { Text(Dates.label(endOn)) }
+                }
+            }
+            AnimatedVisibility(endMode == "times") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedTextField(
+                        value = endTimes, onValueChange = { v -> if (v.all { it.isDigit() } && v.length <= 4) endTimes = v },
+                        modifier = Modifier.fillMaxWidth(), label = { Text("How many times in all") },
+                        placeholder = { Text("24 for a 2-year EMI") }, singleLine = true, shape = RoundedCornerShape(16.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    endTimes.toIntOrNull()?.takeIf { it in 1..1200 }?.let { n ->
+                        Text(
+                            "Last one on ${Dates.label(Recurrence.endAfter(start, unit, every, n))}",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             Label("When it's due")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ChoiceChip("Add automatically", mode == RecurringMode.AUTO_ADD, { mode = RecurringMode.AUTO_ADD })
@@ -239,6 +290,7 @@ fun RuleEditScreen(vm: KyeViewModel, ruleId: Long, onBack: () -> Unit) {
     }
 
     if (showDate) DatePickerSheet(start, onDismiss = { showDate = false }) { start = it }
+    if (pickingEnd) DatePickerSheet(endOn, onDismiss = { pickingEnd = false }) { endOn = it }
     pendingBackfill?.let { (rule, options) ->
         com.kye.app.ui.components.BackfillDialog(
             options = options,
