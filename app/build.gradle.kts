@@ -67,6 +67,8 @@ android {
     testOptions {
         // The start-up test needs the app's real theme, layouts and manifest.
         unitTests.isIncludeAndroidResources = true
+        // Print the SPEED timings from SpeedTest in the build log.
+        unitTests.all { it.testLogging { showStandardStreams = true } }
     }
 }
 
