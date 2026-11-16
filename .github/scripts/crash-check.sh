@@ -3,6 +3,8 @@
 set -u
 PKG=com.kye.app
 mkdir -p out
+read -r W H < <(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr 'x' ' ')
+X=$((W / 2)); LOW=$((H * 80 / 100)); HIGH=$((H * 25 / 100))
 adb install -r apk/*.apk
 adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS || true
 adb logcat -c
@@ -13,6 +15,8 @@ tap() {
   adb pull /sdcard/ui.xml out/ui.xml >/dev/null 2>&1
   local b
   b=$(grep -o "<node[^>]*\(content-desc\|text\)=\"$1\"[^>]*>" out/ui.xml | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9]\+' | tr '\n' ' ')
+  # Not found as a whole label: try a label that contains it (e.g. "✓, Violet").
+  [ -z "$b" ] && b=$(grep -o "<node[^>]*\(content-desc\|text\)=\"[^\"]*$1[^\"]*\"[^>]*>" out/ui.xml | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9]\+' | tr '\n' ' ')
   if [ -z "$b" ]; then echo "STEP: '$1' not found on screen"; return 1; fi
   set -- $b
   adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
@@ -29,7 +33,7 @@ sleep 8; shot 1-home; alive "opened"
 
 tap "Settings"; sleep 6; shot 2-settings; alive "Settings icon"
 tap "Categories" && { sleep 4; alive "Categories"; adb shell input keyevent KEYCODE_BACK; sleep 3; }
-for i in 1 2 3 4; do adb shell input swipe 540 1800 540 600 300; sleep 1; done
+for i in 1 2 3 4 5 6; do adb shell input swipe $X $LOW $X $HIGH 300; sleep 1; done
 shot 2b-settings-bottom
 tap "Ocean" && { sleep 3; alive "Ocean colours"; }
 tap "Wallpaper" && { sleep 3; alive "Wallpaper colours"; }

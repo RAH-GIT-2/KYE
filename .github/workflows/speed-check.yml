@@ -1,26 +1,44 @@
-# Compares how smoothly releases scroll on the same emulator (frame times from dumpsys gfxinfo).
-# Started by hand: gh workflow run speed-check.yml -f tags="v3.0 v3.4.2"
+# Compares how smoothly versions scroll with ~1,500 entries loaded (frame times from dumpsys
+# gfxinfo on an emulator). Each version is built as a "benchmark" APK: like the release, plus a
+# screen that loads made-up entries. Started by hand:
+#   gh workflow run speed-check.yml -f refs="v3.0 main"
 name: Speed check
 
 on:
   workflow_dispatch:
     inputs:
-      tags:
-        description: "Release tags to compare, space-separated"
+      refs:
+        description: "Git tags/branches to compare, space-separated"
         required: true
-        default: "v3.0 v3.4.2"
+        default: "v3.0 main"
 
 jobs:
   emulator:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Download the APKs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: for t in ${{ inputs.tags }}; do gh release download "$t" -p '*.apk' -D "apk/$t"; done
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build benchmark APKs
+        run: |
+          for r in ${{ inputs.refs }}; do
+            n=$(echo "$r" | tr '/' '_')
+            git worktree add "/tmp/w-$n" "$r"
+            bash .github/scripts/add-benchmark.sh "/tmp/w-$n"
+            (cd "/tmp/w-$n" && chmod +x gradlew && ./gradlew assembleBenchmark --console=plain -q)
+            mkdir -p "apk/$n"
+            cp /tmp/w-$n/app/build/outputs/apk/benchmark/*.apk "apk/$n/"
+          done
+          ls -R apk
 
       - name: Enable KVM
         run: |
@@ -35,4 +53,4 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: false
-          script: bash .github/scripts/speed-check.sh "${{ inputs.tags }}"
+          script: bash .github/scripts/speed-check.sh "${{ inputs.refs }}"
