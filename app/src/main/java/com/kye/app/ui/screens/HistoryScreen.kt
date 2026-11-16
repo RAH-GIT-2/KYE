@@ -433,6 +433,8 @@ private fun SwipeRow(
         enableDismissFromEndToStart = enabled,
         backgroundContent = {
             val dir = state.dismissDirection
+            // Nothing behind the row until it is actually being swiped: keeps scrolling light.
+            if (dir == SwipeToDismissBoxValue.Settled) return@SwipeToDismissBox
             val again = dir == SwipeToDismissBoxValue.StartToEnd
             val color = when (dir) {
                 SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.secondary

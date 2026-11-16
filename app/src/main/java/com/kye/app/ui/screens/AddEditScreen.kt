@@ -11,8 +11,6 @@ import androidx.compose.material3.ButtonDefaults
 import android.view.HapticFeedbackConstants
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
@@ -146,13 +144,13 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var pickingWarranty by remember { mutableStateOf(false) }
     var photoBusy by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
-    // Saved: the button turns into a green tick for a moment before the form closes.
+    // Saved: the button flashes a green tick (0.15 s) and the form closes.
     var closing by remember { mutableStateOf(false) }
     val tick = remember { Animatable(0f) }
     val view = LocalView.current
     LaunchedEffect(closing) {
         if (closing) {
-            tick.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
+            tick.animateTo(1f, tween(150))
             onBack()
         }
     }

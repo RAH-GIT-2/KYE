@@ -1,7 +1,6 @@
 package com.kye.app.ui.screens
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -164,14 +163,12 @@ private fun MonthGrid(m: SpendCalendar.Month, today: LocalDate, picked: LocalDat
                             val spent = m.byDay[d] ?: 0L
                             val level = SpendCalendar.level(spent, m.max)
                             val future = d.isAfter(today)
-                            val fill by animateColorAsState(
-                                when {
-                                    future -> Color.Transparent
-                                    level == 0 -> empty
-                                    else -> heat.copy(alpha = 0.18f + 0.2f * level)
-                                },
-                                tween(300), label = "day"
-                            )
+                            // Plain colours, no per-day animation: 42 of them made Insights heavy.
+                            val fill = when {
+                                future -> Color.Transparent
+                                level == 0 -> empty
+                                else -> heat.copy(alpha = 0.18f + 0.2f * level)
+                            }
                             val deep = level >= 3
                             Box(
                                 Modifier

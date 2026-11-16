@@ -318,7 +318,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
             exitTransition = { fadeOut(tween(150)) },
             popEnterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f) },
             // Going back (also while the back swipe is in progress) shrinks the screen away.
-            popExitTransition = { fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.9f) }
+            popExitTransition = { fadeOut(tween(150)) + scaleOut(tween(150), targetScale = 0.92f) }
         ) {
             composable("home") {
                 HomeScreen(
