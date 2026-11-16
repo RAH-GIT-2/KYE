@@ -5,7 +5,10 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import org.junit.After
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -40,7 +43,17 @@ import java.time.LocalTime
 @Config(sdk = [34], application = TestKyeApp::class, qualifiers = "w411dp-h891dp-xxhdpi")
 class ScreenTest {
 
-    @get:Rule val rule = createAndroidComposeRule<MainActivity>()
+    @get:Rule val rule = createEmptyComposeRule()
+    private var scenario: ActivityScenario<MainActivity>? = null
+
+    /** Opens KYE. Tests that need entries add them first, like opening the app with data in it. */
+    private fun launch() {
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+    }
+
+    @After fun close() {
+        scenario?.close()
+    }
 
     /**
      * Waits for [condition], letting the main thread run what the database and background work
@@ -72,7 +85,7 @@ class ScreenTest {
         rule.onNode(hasText(name) and androidx.compose.ui.test.isSelectable())
 
     private fun back() {
-        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         rule.waitForIdle()
     }
 
@@ -87,7 +100,7 @@ class ScreenTest {
     }
 
     private fun addEntries(vararg notes: String) = runBlocking {
-        val repo = (rule.activity.application as KyeApp).container.repo
+        val repo = ApplicationProvider.getApplicationContext<KyeApp>().container.repo
         notes.forEachIndexed { i, note ->
             repo.saveTxn(
                 Txn(
@@ -99,6 +112,7 @@ class ScreenTest {
     }
 
     @Test fun eachTabOpens() {
+        launch()
         waitForText("Know Your Expense")
         listOf("History", "Insights", "Recurring", "Home").forEach { name ->
             tab(name).performClick()
@@ -109,6 +123,7 @@ class ScreenTest {
     }
 
     @Test fun addedEntryShowsOnHomeAndInHistory() {
+        launch()
         waitForText("Know Your Expense")
         openAdd()
         rule.onNodeWithTag("amount").performTextInput("437")
@@ -125,6 +140,7 @@ class ScreenTest {
     }
 
     @Test fun quickTypeFillsTheAmount() {
+        launch()
         waitForText("Know Your Expense")
         openAdd()
         rule.onNodeWithText("Quick type").performTextInput("auto 85")
@@ -141,6 +157,7 @@ class ScreenTest {
 
     @Test fun historySearchFindsOnlyMatches() {
         addEntries("Swiggy dinner", "Petrol")
+        launch()
         openHistory()
         waitForText("Swiggy dinner")
         waitForText("Petrol")
@@ -152,6 +169,7 @@ class ScreenTest {
 
     @Test fun historyDeletesSelectedEntries() {
         addEntries("Swiggy dinner", "Petrol")
+        launch()
         openHistory()
         waitForText("Swiggy dinner")
 
@@ -167,6 +185,7 @@ class ScreenTest {
     }
 
     @Test fun everySettingsPageOpens() {
+        launch()
         waitForText("Know Your Expense")
         rule.onNodeWithContentDescription("Settings").performClick()
         waitForText("Settings")
