@@ -375,7 +375,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                 ) { nav.popBackStack() }
             }
             composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
-            composable("insights") { InsightsScreen(vm) { nav.navigate("budgets") } }
+            composable("insights") { InsightsScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.navigate("budgets") } }
             composable("recurring") {
                 RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") })
             }

@@ -20,6 +20,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -177,6 +179,32 @@ class ScreenTest {
         rule.onAllNodesWithText("Delete").onLast().performClick()
 
         waitForText("No entries yet")
+    }
+
+    @Test fun historySwipeDeletesWithUndoAndAddsAgain() {
+        launchWithEntries("Swiggy dinner", "Petrol")
+        openHistory()
+        waitForText("Petrol")
+
+        // Left: gone, with Undo; Undo brings it back.
+        rule.onNodeWithText("Petrol").performTouchInput { swipeLeft() }
+        waitFor { rule.onAllNodesWithText("Petrol").fetchSemanticsNodes().isEmpty() }
+        rule.onNodeWithText("Undo").performClick()
+        waitForText("Petrol")
+
+        // Right: the same entry is added again.
+        rule.onNodeWithText("Swiggy dinner").performTouchInput { swipeRight() }
+        waitFor { rule.onAllNodesWithText("Swiggy dinner").fetchSemanticsNodes().size == 2 }
+    }
+
+    @Test fun calendarShowsTodaysEntries() {
+        launchWithEntries("Swiggy dinner")
+        tab("Insights").performClick()
+        waitForText("Spending calendar")
+        val today = java.time.LocalDate.now()
+        rule.onNode(hasContentDescription("${com.kye.app.domain.Dates.label(today)}:", substring = true))
+            .performScrollTo().performClick()
+        waitForText("Swiggy dinner")
     }
 
     @Test fun coloursAndPureBlackSwitch() {

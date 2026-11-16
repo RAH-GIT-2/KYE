@@ -4,6 +4,21 @@ package com.kye.app.ui.screens
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -116,6 +131,27 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
     val grouped = result ?: emptyMap()
     val shownIds = remember(grouped) { grouped.values.flatten().map { it.txn.id } }
 
+    // Swipe left deletes, swipe right adds the same entry again for now. Each shows a short "Undo"
+    // bar. A deleted entry only hides at first; it is really deleted when the bar goes, so Undo
+    // keeps its photos too.
+    var offer by remember { mutableStateOf<UndoOffer?>(null) }
+    fun showOffer(o: UndoOffer) {
+        offer?.expire?.invoke()
+        offer = o
+    }
+    LaunchedEffect(offer) {
+        val o = offer ?: return@LaunchedEffect
+        delay(5_000)
+        if (offer === o) {
+            o.expire()
+            offer = null
+        }
+    }
+    // Leaving History finishes a pending delete.
+    DisposableEffect(Unit) { onDispose { offer?.expire?.invoke() } }
+    val hiddenId = offer?.hideId
+
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = tabBottomPadding(96.dp))
@@ -216,7 +252,9 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
             }
         }
 
-        grouped.forEach { (day, rows) ->
+        grouped.forEach { (day, dayRows) ->
+            val rows = if (hiddenId == null) dayRows else dayRows.filter { it.txn.id != hiddenId }
+            if (rows.isEmpty()) return@forEach
             stickyHeader(key = "h-$day") {
                 val spent = rows.filter { it.txn.type == TxnType.EXPENSE }.sumOf { it.txn.amountPaise }
                 Row(
@@ -241,17 +279,43 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
                 val id = row.txn.id
                 val isOn = id in selected
                 val toggle = { selected = if (isOn) selected - id else selected + id }
-                TxnItem(
-                    row,
-                    Modifier
-                        .animateItem()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isOn) MaterialTheme.colorScheme.primaryContainer else Color.Transparent),
-                    showDate = false,
-                    onLongClick = toggle
-                ) { if (selecting) toggle() else onOpenTxn(id) }
+                SwipeRow(
+                    enabled = !selecting,
+                    modifier = Modifier.animateItem(),
+                    onDelete = {
+                        showOffer(UndoOffer("Deleted ${row.title}", hideId = id, expire = { vm.deleteTxn(row.txn) {} }))
+                    },
+                    onAgain = {
+                        vm.addAgain(row.txn) { newId, msg ->
+                            if (msg != null) toast(msg)
+                            showOffer(UndoOffer("Added ${row.title} again", undo = { vm.undoAdd(newId) }))
+                        }
+                    }
+                ) {
+                    TxnItem(
+                        row,
+                        Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isOn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background),
+                        showDate = false,
+                        onLongClick = toggle
+                    ) { if (selecting) toggle() else onOpenTxn(id) }
+                }
             }
         }
+    }
+
+    offer?.let { o ->
+        UndoBar(
+            o.text,
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, end = 96.dp, bottom = tabBottomPadding(0.dp) - 2.dp)
+        ) {
+            o.undo()
+            offer = null
+        }
+    }
     }
 
     when (action) {
@@ -325,5 +389,100 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
             },
             dismissButton = { TextButton(onClick = { action = null }) { Text("Cancel") } }
         )
+    }
+}
+
+/** What the Undo bar offers: [undo] when tapped, [expire] when it goes away untouched. */
+private class UndoOffer(
+    val text: String,
+    val hideId: Long? = null,
+    val undo: () -> Unit = {},
+    val expire: () -> Unit = {}
+)
+
+/**
+ * An entry row that can be swiped: right (green) adds it again for now, left (red) deletes it.
+ * The row springs back either way; the list itself hides a deleted entry.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeRow(
+    enabled: Boolean,
+    modifier: Modifier,
+    onDelete: () -> Unit,
+    onAgain: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val view = LocalView.current
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { v ->
+            when (v) {
+                SwipeToDismissBoxValue.EndToStart -> onDelete()
+                SwipeToDismissBoxValue.StartToEnd -> onAgain()
+                SwipeToDismissBoxValue.Settled -> return@rememberSwipeToDismissBoxState true
+            }
+            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+            false
+        },
+        positionalThreshold = { total -> total * 0.35f }
+    )
+    SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        enableDismissFromStartToEnd = enabled,
+        enableDismissFromEndToStart = enabled,
+        backgroundContent = {
+            val dir = state.dismissDirection
+            val again = dir == SwipeToDismissBoxValue.StartToEnd
+            val color = when (dir) {
+                SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.secondary
+                SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.error
+                else -> Color.Transparent
+            }
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(color)
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = if (again) Arrangement.Start else Arrangement.End
+            ) {
+                if (dir != SwipeToDismissBoxValue.Settled) {
+                    val scale = 0.8f + 0.4f * state.progress.coerceIn(0f, 1f)
+                    Icon(
+                        if (again) Icons.Rounded.Replay else Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (again) "Add again" else "Delete", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+    ) { content() }
+}
+
+/** Dark pill near the bottom: "Deleted Swiggy · Undo". */
+@Composable
+private fun UndoBar(text: String, modifier: Modifier, onUndo: () -> Unit) {
+    Row(
+        modifier
+            .shadow(10.dp, RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.inverseSurface)
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text,
+            color = MaterialTheme.colorScheme.inverseOnSurface,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        TextButton(onClick = onUndo) { Text("Undo", color = MaterialTheme.colorScheme.inversePrimary) }
     }
 }
