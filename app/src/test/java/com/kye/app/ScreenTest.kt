@@ -160,6 +160,8 @@ class ScreenTest {
     @Test fun historySearchFindsOnlyMatches() {
         addEntries("Swiggy dinner", "Petrol")
         launch()
+        // Home lists them under Recent.
+        waitForText("Swiggy dinner")
         openHistory()
         waitForText("Swiggy dinner")
         waitForText("Petrol")
@@ -172,6 +174,8 @@ class ScreenTest {
     @Test fun historyDeletesSelectedEntries() {
         addEntries("Swiggy dinner", "Petrol")
         launch()
+        // Home lists them under Recent.
+        waitForText("Swiggy dinner")
         openHistory()
         waitForText("Swiggy dinner")
 
