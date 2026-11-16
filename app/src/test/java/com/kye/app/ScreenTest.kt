@@ -160,6 +160,9 @@ class ScreenTest {
     @Test fun historySearchFindsOnlyMatches() {
         addEntries("Swiggy dinner", "Petrol")
         launch()
+        var vmSize = -1
+        runCatching { waitFor { scenario!!.onActivity { vmSize = androidx.lifecycle.ViewModelProvider(it)[com.kye.app.ui.KyeViewModel::class.java].txns.value.size }; vmSize > 0 } }
+        println("SCREEN entries the screen sees: $vmSize; in the database now: ${runBlocking { ApplicationProvider.getApplicationContext<KyeApp>().container.repo.transactions.first().size }}")
         // Home lists them under Recent.
         waitForText("Swiggy dinner")
         openHistory()
