@@ -43,7 +43,9 @@ class ScreenTest {
     private fun waitForText(text: String, substring: Boolean = false) =
         rule.waitUntil(10_000) { rule.onAllNodesWithText(text, substring).fetchSemanticsNodes().isNotEmpty() }
 
-    private fun tab(name: String): SemanticsNodeInteraction = rule.onNodeWithContentDescription(name)
+    /** A bottom tab: the selectable item labelled with its name (not the History page title). */
+    private fun tab(name: String): SemanticsNodeInteraction =
+        rule.onNode(hasText(name) and androidx.compose.ui.test.isSelectable())
 
     private fun back() {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
