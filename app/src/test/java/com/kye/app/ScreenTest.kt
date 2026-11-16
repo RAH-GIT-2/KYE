@@ -182,29 +182,30 @@ class ScreenTest {
     }
 
     @Test fun historySwipeDeletesWithUndoAndAddsAgain() {
-        launchWithEntries("Swiggy dinner", "Petrol")
+        // Notes only this test uses: entries from other tests can still be around.
+        launchWithEntries("Swipe chai", "Swipe fuel")
         openHistory()
-        waitForText("Petrol")
+        waitForText("Swipe fuel")
 
         // Left: gone, with Undo; Undo brings it back.
-        rule.onNodeWithText("Petrol").performTouchInput { swipeLeft() }
-        waitFor { rule.onAllNodesWithText("Petrol").fetchSemanticsNodes().isEmpty() }
+        rule.onNodeWithText("Swipe fuel").performTouchInput { swipeLeft() }
+        waitFor { rule.onAllNodesWithText("Swipe fuel").fetchSemanticsNodes().isEmpty() }
         rule.onNodeWithText("Undo").performClick()
-        waitForText("Petrol")
+        waitForText("Swipe fuel")
 
         // Right: the same entry is added again.
-        rule.onNodeWithText("Swiggy dinner").performTouchInput { swipeRight() }
-        waitFor { rule.onAllNodesWithText("Swiggy dinner").fetchSemanticsNodes().size == 2 }
+        rule.onNodeWithText("Swipe chai").performTouchInput { swipeRight() }
+        waitFor { rule.onAllNodesWithText("Swipe chai").fetchSemanticsNodes().size == 2 }
     }
 
     @Test fun calendarShowsTodaysEntries() {
-        launchWithEntries("Swiggy dinner")
+        launchWithEntries("Calendar snack")
         tab("Insights").performClick()
         waitForText("Spending calendar")
         val today = java.time.LocalDate.now()
         rule.onNode(hasContentDescription("${com.kye.app.domain.Dates.label(today)}:", substring = true))
             .performScrollTo().performClick()
-        waitForText("Swiggy dinner")
+        waitForText("Calendar snack")
     }
 
     @Test fun coloursAndPureBlackSwitch() {
