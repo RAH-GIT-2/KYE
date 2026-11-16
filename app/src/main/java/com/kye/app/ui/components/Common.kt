@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi

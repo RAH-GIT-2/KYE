@@ -174,7 +174,7 @@ private fun CategoryCard(s: AnalyticsState) {
     var expanded by remember(s.period) { mutableStateOf<Long?>(-1L) }
     SectionCard(title = "Where it went", subtitle = "Tap a category for its breakdown") {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Donut(s.slices, s.spent, expanded) { key -> expanded = if (expanded == key) -1L else key }
+            Donut(s.slices, s.spent, expanded ?: -1L) { key -> expanded = if (expanded == key) -1L else key }
         }
         Spacer(Modifier.height(16.dp))
         s.slices.forEach { slice ->
