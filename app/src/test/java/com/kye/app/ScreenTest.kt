@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -44,9 +46,22 @@ class ScreenTest {
      * Waits for [condition], letting the main thread run what the database and background work
      * hand back to the screen (on Robolectric that only happens when the test lets it).
      */
-    private fun waitFor(condition: () -> Boolean) = rule.waitUntil(10_000) {
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        condition()
+    private fun waitFor(condition: () -> Boolean) = try {
+        rule.waitUntil(10_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            condition()
+        }
+    } catch (e: Throwable) {
+        // Show what was on screen, so a failure in the build log says why.
+        println(runCatching { rule.onRoot().printToString() }.getOrElse { "screen: $it" })
+        throw e
+    }
+
+    /** Opens History from the bottom bar and waits until Home has gone. */
+    private fun openHistory() {
+        tab("History").performClick()
+        waitFor { rule.onAllNodesWithText("Know Your Expense").fetchSemanticsNodes().isEmpty() }
+        waitForText("Search notes, merchants, amounts")
     }
 
     private fun waitForText(text: String, substring: Boolean = false) =
@@ -90,8 +105,7 @@ class ScreenTest {
             rule.waitForIdle()
             tab(name).assertIsSelected()
         }
-        tab("History").performClick()
-        waitForText("Search notes, merchants, amounts")
+        openHistory()
     }
 
     @Test fun addedEntryShowsOnHomeAndInHistory() {
@@ -106,8 +120,7 @@ class ScreenTest {
         waitForText("test samosa")
         waitForText("437", substring = true)
 
-        tab("History").performClick()
-        waitForText("Search notes, merchants, amounts")
+        openHistory()
         waitForText("test samosa")
     }
 
@@ -128,7 +141,7 @@ class ScreenTest {
 
     @Test fun historySearchFindsOnlyMatches() {
         addEntries("Swiggy dinner", "Petrol")
-        tab("History").performClick()
+        openHistory()
         waitForText("Swiggy dinner")
         waitForText("Petrol")
 
@@ -139,7 +152,7 @@ class ScreenTest {
 
     @Test fun historyDeletesSelectedEntries() {
         addEntries("Swiggy dinner", "Petrol")
-        tab("History").performClick()
+        openHistory()
         waitForText("Swiggy dinner")
 
         rule.onNodeWithText("Swiggy dinner").performTouchInput { longClick() }
