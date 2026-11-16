@@ -25,6 +25,7 @@ import com.kye.app.data.PaymentMode
 import com.kye.app.data.Txn
 import com.kye.app.data.TxnType
 import com.kye.app.domain.Dates
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -109,6 +110,7 @@ class ScreenTest {
                 )
             )
         }
+        println("SCREEN entries in the database: ${repo.transactions.first().size}")
     }
 
     @Test fun eachTabOpens() {
