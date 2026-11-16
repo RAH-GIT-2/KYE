@@ -40,8 +40,17 @@ class ScreenTest {
 
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
 
+    /**
+     * Waits for [condition], letting the main thread run what the database and background work
+     * hand back to the screen (on Robolectric that only happens when the test lets it).
+     */
+    private fun waitFor(condition: () -> Boolean) = rule.waitUntil(10_000) {
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        condition()
+    }
+
     private fun waitForText(text: String, substring: Boolean = false) =
-        rule.waitUntil(10_000) { rule.onAllNodesWithText(text, substring).fetchSemanticsNodes().isNotEmpty() }
+        waitFor { rule.onAllNodesWithText(text, substring).fetchSemanticsNodes().isNotEmpty() }
 
     /** A bottom tab: the selectable item labelled with its name (not the History page title). */
     private fun tab(name: String): SemanticsNodeInteraction =
@@ -54,7 +63,7 @@ class ScreenTest {
 
     /** Home shows the mic with a small + when the phone has speech recognition, otherwise just +. */
     private fun openAdd() {
-        rule.waitUntil(10_000) {
+        waitFor {
             rule.onAllNodes(hasContentDescription("Add entry") or hasContentDescription("Add manually"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
@@ -92,7 +101,8 @@ class ScreenTest {
         rule.onNodeWithText("Note (optional)").performScrollTo().performTextInput("test samosa")
         rule.onNodeWithText("Save").performClick()
 
-        // Back on Home, under Recent.
+        // Back on Home (the form is gone), under Recent.
+        waitFor { rule.onAllNodesWithText("Quick type").fetchSemanticsNodes().isEmpty() }
         waitForText("test samosa")
         waitForText("437", substring = true)
 
@@ -106,11 +116,12 @@ class ScreenTest {
         openAdd()
         rule.onNodeWithText("Quick type").performTextInput("auto 85")
         rule.onNodeWithContentDescription("Fill the form").performClick()
-        rule.waitUntil(10_000) {
+        waitFor {
             rule.onAllNodes(androidx.compose.ui.test.hasTestTag("amount") and hasText("85", substring = true))
                 .fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("Save").performClick()
+        waitFor { rule.onAllNodesWithText("Quick type").fetchSemanticsNodes().isEmpty() }
         waitForText("Know Your Expense")
         waitForText("85", substring = true)
     }
@@ -122,7 +133,7 @@ class ScreenTest {
         waitForText("Petrol")
 
         rule.onNodeWithText("Search notes, merchants, amounts").performTextInput("swig")
-        rule.waitUntil(10_000) { rule.onAllNodesWithText("Petrol").fetchSemanticsNodes().isEmpty() }
+        waitFor { rule.onAllNodesWithText("Petrol").fetchSemanticsNodes().isEmpty() }
         rule.onNodeWithText("Swiggy dinner").assertExists()
     }
 
@@ -152,7 +163,7 @@ class ScreenTest {
         ).forEach { page ->
             rule.onNodeWithText(page).performScrollTo().performClick()
             // The page opened: the Settings title is gone.
-            rule.waitUntil(10_000) { rule.onAllNodesWithText("Settings").fetchSemanticsNodes().isEmpty() }
+            waitFor { rule.onAllNodesWithText("Settings").fetchSemanticsNodes().isEmpty() }
             back()
             waitForText("Settings")
         }
