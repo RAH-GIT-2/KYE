@@ -61,6 +61,7 @@ import com.kye.app.domain.Slice
 import com.kye.app.domain.TrendBar
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.components.CategoryAvatar
+import com.kye.app.ui.components.tabBottomPadding
 import com.kye.app.ui.components.ChoiceChip
 import com.kye.app.ui.components.EmptyState
 import com.kye.app.ui.components.ProgressBar
