@@ -32,7 +32,7 @@ jobs:
         run: |
           for r in ${{ inputs.refs }}; do
             n=$(echo "$r" | tr '/' '_')
-            git worktree add "/tmp/w-$n" "$r"
+            git worktree add --detach "/tmp/w-$n" "$r"
             bash .github/scripts/add-benchmark.sh "/tmp/w-$n"
             (cd "/tmp/w-$n" && chmod +x gradlew && ./gradlew assembleBenchmark --console=plain -q)
             mkdir -p "apk/$n"
