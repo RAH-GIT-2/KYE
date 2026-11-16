@@ -8,7 +8,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import org.junit.After
-import org.junit.Before
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -31,7 +30,9 @@ import org.robolectric.annotation.Config
 
 /**
  * Taps through the real app the way a person would: tabs, adding an entry, History search and
- * delete, and every page under Settings. Each test starts with a fresh, empty KYE.
+ * delete, and every page under Settings. Entries added by one test can still be there in the
+ * next (the test machine keeps them), so each test uses notes of its own and never counts on
+ * an empty list.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -44,13 +45,6 @@ class ScreenTest {
     /** Opens KYE. Tests that need entries add them first, like opening the app with data in it. */
     private fun launch() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
-    }
-
-    /** Entries can still be there from the test before (the app's files outlive one test), so start empty. */
-    @Before fun startEmpty() {
-        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<KyeApp>()
-        val db = app.container.db.openHelper.writableDatabase
-        listOf("attachment", "warranty", "txn").forEach { db.execSQL("DELETE FROM $it") }
     }
 
     @After fun close() {
@@ -163,30 +157,33 @@ class ScreenTest {
     }
 
     @Test fun historySearchFindsOnlyMatches() {
-        launchWithEntries("Swiggy dinner", "Petrol")
+        launchWithEntries("Search swiggy", "Search petrol")
         openHistory()
-        waitForText("Swiggy dinner")
-        waitForText("Petrol")
+        waitForText("Search swiggy")
+        waitForText("Search petrol")
 
         rule.onNodeWithText("Search notes, merchants, amounts").performTextInput("swig")
-        waitFor { rule.onAllNodesWithText("Petrol").fetchSemanticsNodes().isEmpty() }
-        rule.onNodeWithText("Swiggy dinner").assertExists()
+        waitFor { rule.onAllNodesWithText("Search petrol").fetchSemanticsNodes().isEmpty() }
+        rule.onNodeWithText("Search swiggy").assertExists()
     }
 
     @Test fun historyDeletesSelectedEntries() {
-        launchWithEntries("Swiggy dinner", "Petrol")
+        launchWithEntries("Delete lunch", "Delete auto")
         openHistory()
-        waitForText("Swiggy dinner")
+        waitForText("Delete auto")
 
-        rule.onNodeWithText("Swiggy dinner").performTouchInput { longClick() }
+        rule.onNodeWithText("Delete lunch").performTouchInput { longClick() }
         waitForText("1 selected")
-        rule.onNodeWithText("Select all").performClick()
+        rule.onNodeWithText("Delete auto").performClick()
         waitForText("2 selected")
         rule.onNodeWithText("Delete").performClick()
         waitForText("Delete 2 entries?")
         rule.onAllNodesWithText("Delete").onLast().performClick()
 
-        waitForText("No entries yet")
+        waitFor {
+            rule.onAllNodesWithText("Delete lunch").fetchSemanticsNodes().isEmpty() &&
+                rule.onAllNodesWithText("Delete auto").fetchSemanticsNodes().isEmpty()
+        }
     }
 
     @Test fun historySwipeDeletesWithUndoAndAddsAgain() {
