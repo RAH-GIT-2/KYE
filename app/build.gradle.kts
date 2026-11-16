@@ -112,4 +112,8 @@ dependencies {
     testImplementation("androidx.test:core-ktx:1.6.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("androidx.work:work-testing:2.10.0")
+    // On-screen tests (ScreenTest): tap through the real app on Robolectric, no phone needed.
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

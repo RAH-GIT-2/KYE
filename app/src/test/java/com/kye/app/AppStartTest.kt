@@ -17,6 +17,8 @@ import org.robolectric.annotation.Config
 /** The real app class, with WorkManager set up for tests before the app schedules its jobs. */
 class TestKyeApp : KyeApp() {
     override fun onCreate() {
+        // No "Allow notifications?" prompt in the way of the screens.
+        org.robolectric.Shadows.shadowOf(this).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
         WorkManagerTestInitHelper.initializeTestWorkManager(
             this, Configuration.Builder().setExecutor(SynchronousExecutor()).build()
         )
