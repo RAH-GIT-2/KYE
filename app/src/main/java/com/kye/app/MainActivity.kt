@@ -1,5 +1,3 @@
-@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
-
 package com.kye.app
 
 import android.Manifest
@@ -102,20 +100,6 @@ import com.kye.app.ui.screens.StoryScreen
 import com.kye.app.ui.screens.VoiceSheet
 import com.kye.app.ui.theme.KyeTheme
 import com.kye.app.ui.components.ConfettiBurst
-import com.kye.app.ui.components.LocalNavAnimatedScope
-import com.kye.app.ui.components.LocalSharedScope
-import com.kye.app.ui.components.NEW_ENTRY_KEY
-import com.kye.app.ui.components.sharedCard
-import androidx.compose.animation.AnimatedContentScope
-import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.navigation.NamedNavArgument
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavGraphBuilder
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeChild
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -240,8 +224,6 @@ private val tabs = listOf(
 @Composable
 private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
     val nav = rememberNavController()
-    // The screen behind the floating bottom bar, blurred through it.
-    val haze = remember { HazeState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val onTab = tabs.any { it.route == route }
@@ -274,9 +256,6 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
         }
     }
 
-    // Lets a tapped row or the + button grow into the screen it opens.
-    SharedTransitionLayout {
-    CompositionLocalProvider(LocalSharedScope provides this) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
@@ -285,7 +264,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                 enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180))
             ) {
-                GlassBar(route, haze) { nav.goTab(it) }
+                GlassBar(route) { nav.goTab(it) }
             }
         },
         floatingActionButton = {
@@ -302,7 +281,6 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     if (micHere) {
                         SmallFloatingActionButton(
                             onClick = { nav.navigate("add") },
-                            modifier = Modifier.sharedCard(NEW_ENTRY_KEY, this@AnimatedVisibility),
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                             shape = RoundedCornerShape(14.dp)
@@ -316,7 +294,6 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     } else {
                         FloatingActionButton(
                             onClick = { nav.navigate(if (onRecurring) "rule" else "add") },
-                            modifier = if (onRecurring) Modifier else Modifier.sharedCard(NEW_ENTRY_KEY, this@AnimatedVisibility),
                             shape = RoundedCornerShape(18.dp),
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -335,15 +312,15 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
         NavHost(
             navController = nav,
             startDestination = "home",
-            // Screens run under the floating bar (it is see-through); tab screens leave room at the bottom.
-            modifier = Modifier.padding(top = pad.calculateTopPadding()).haze(haze),
+            // Screens run under the floating bar; tab screens leave room at the bottom.
+            modifier = Modifier.padding(top = pad.calculateTopPadding()),
             enterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f) },
             exitTransition = { fadeOut(tween(150)) },
             popEnterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f) },
             // Going back (also while the back swipe is in progress) shrinks the screen away.
             popExitTransition = { fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.9f) }
         ) {
-            screen("home") {
+            composable("home") {
                 HomeScreen(
                     vm = vm,
                     onOpenTxn = { nav.navigate("add?id=$it") },
@@ -360,39 +337,39 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onStory = { nav.navigate("story/$it") }
                 )
             }
-            screen("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
-            screen(
+            composable("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
+            composable(
                 "goal/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 GoalDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            screen("schemes") { GoldSchemesScreen(vm, onOpen = { nav.navigate("scheme/$it") }) { nav.popBackStack() } }
-            screen(
+            composable("schemes") { GoldSchemesScreen(vm, onOpen = { nav.navigate("scheme/$it") }) { nav.popBackStack() } }
+            composable(
                 "scheme/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 GoldSchemeDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            screen("cards") { CardsScreen(vm, onOpen = { nav.navigate("card/$it") }) { nav.popBackStack() } }
-            screen(
+            composable("cards") { CardsScreen(vm, onOpen = { nav.navigate("card/$it") }) { nav.popBackStack() } }
+            composable(
                 "card/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 CardDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            screen("subscriptions") {
+            composable("subscriptions") {
                 SubscriptionsScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") }, onNew = { nav.navigate("rule") }) { nav.popBackStack() }
             }
-            screen("warranties") { WarrantiesScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() } }
-            screen("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
-            screen(
+            composable("warranties") { WarrantiesScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() } }
+            composable("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
+            composable(
                 "event/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 EventDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            screen(
+            composable(
                 "ask?mic={mic}",
                 arguments = listOf(navArgument("mic") { type = NavType.BoolType; defaultValue = false })
             ) { e ->
@@ -402,19 +379,19 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onOpenTxn = { nav.navigate("add?id=$it") }
                 ) { nav.popBackStack() }
             }
-            screen("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
-            screen("insights") {
+            composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
+            composable("insights") {
                 InsightsScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }, onStory = { nav.navigate("story/$it") }) { nav.navigate("budgets") }
             }
-            screen("story/{month}") { e ->
+            composable("story/{month}") { e ->
                 val month = runCatching { java.time.YearMonth.parse(e.arguments?.getString("month")) }
                     .getOrElse { java.time.YearMonth.now().minusMonths(1) }
                 StoryScreen(vm, month) { nav.popBackStack() }
             }
-            screen("recurring") {
+            composable("recurring") {
                 RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") })
             }
-            screen(
+            composable(
                 "add?id={id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })
             ) { e ->
@@ -424,22 +401,22 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onManageCategories = { nav.navigate("categories") }
                 ) { nav.popBackStack() }
             }
-            screen("categories") {
+            composable("categories") {
                 CategoriesScreen(vm, onOpen = { nav.navigate("category/$it") }) { nav.popBackStack() }
             }
-            screen(
+            composable(
                 "category/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 CategoryDetailScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
-            screen(
+            composable(
                 "rule?id={id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })
             ) { e ->
                 RuleEditScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
-            screen("settings") {
+            composable("settings") {
                 SettingsScreen(
                     vm,
                     onBack = { nav.popBackStack() },
@@ -455,18 +432,16 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onWarranties = { nav.navigate("warranties") }
                 )
             }
-            screen("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }
-            screen("import") { ImportScreen(vm) { nav.popBackStack() } }
-            screen("loans") { LoansScreen(vm, onOpen = { nav.navigate("loan/$it") }) { nav.popBackStack() } }
-            screen(
+            composable("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }
+            composable("import") { ImportScreen(vm) { nav.popBackStack() } }
+            composable("loans") { LoansScreen(vm, onOpen = { nav.navigate("loan/$it") }) { nav.popBackStack() } }
+            composable(
                 "loan/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 LoanDetailScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
         }
-    }
-    }
     }
 
     if (vm.voiceOpen) {
@@ -484,11 +459,12 @@ private fun NavHostController.goTab(route: String) {
 }
 
 /**
- * Floating, frosted bottom bar: a rounded pill above the phone's own buttons. What scrolls under
- * it shows through, blurred. The chosen tab gets a soft pill of colour behind its icon.
+ * Floating, frosted bottom bar: a rounded pill above the phone's own buttons, mostly opaque so
+ * what scrolls under it only faintly shows. (A live blur was tried in v3.0 but made scrolling
+ * heavy.) The chosen tab gets a soft pill of colour behind its icon.
  */
 @Composable
-private fun GlassBar(route: String?, haze: HazeState, onTab: (String) -> Unit) {
+private fun GlassBar(route: String?, onTab: (String) -> Unit) {
     val shape = RoundedCornerShape(32.dp)
     val cs = MaterialTheme.colorScheme
     Row(
@@ -498,12 +474,7 @@ private fun GlassBar(route: String?, haze: HazeState, onTab: (String) -> Unit) {
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .shadow(18.dp, shape, ambientColor = cs.primary.copy(alpha = 0.25f), spotColor = cs.primary.copy(alpha = 0.25f))
             .clip(shape)
-            .hazeChild(haze) {
-                backgroundColor = cs.background
-                tints = listOf(HazeTint(cs.surfaceContainerLowest.copy(alpha = 0.70f)))
-                blurRadius = 24.dp
-                fallbackTint = HazeTint(cs.surfaceContainerLowest.copy(alpha = 0.96f))
-            }
+            .background(cs.surfaceContainerLowest.copy(alpha = 0.94f))
             .border(1.dp, cs.outlineVariant.copy(alpha = 0.6f), shape)
             .height(66.dp)
             .selectableGroup(),
@@ -549,16 +520,5 @@ private fun GlassBar(route: String?, haze: HazeState, onTab: (String) -> Unit) {
                 )
             }
         }
-    }
-}
-
-/** A navigation destination that also hands its enter/leave animation to shared cards. */
-private fun NavGraphBuilder.screen(
-    route: String,
-    arguments: List<NamedNavArgument> = emptyList(),
-    content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit
-) {
-    composable(route, arguments) { e ->
-        CompositionLocalProvider(LocalNavAnimatedScope provides this) { content(e) }
     }
 }

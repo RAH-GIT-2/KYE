@@ -164,9 +164,7 @@ fun TxnItem(
 ) {
     val t = row.txn
     Row(
-        modifier = Modifier
-            .sharedCard(entryKey(t.id))
-            .then(modifier)
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
