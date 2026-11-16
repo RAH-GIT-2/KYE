@@ -16,6 +16,10 @@ private val Context.dataStore by preferencesDataStore(name = "kye_prefs")
 
 data class Settings(
     val theme: String = "system",      // system | light | dark
+    /** Colour set: violet | ocean | rose | gold | slate | wallpaper. */
+    val palette: String = "violet",
+    /** Dark mode with a true black background. */
+    val pureBlack: Boolean = false,
     val voiceLang: String = "en-IN",   // en-IN | ta-IN
     val askedNotifications: Boolean = false,
     val voiceEnabled: Boolean = true,
@@ -40,6 +44,8 @@ data class BackupSettings(
 class Prefs(context: Context) {
     private val appContext = context.applicationContext
     private val theme = stringPreferencesKey("theme")
+    private val paletteKey = stringPreferencesKey("palette")
+    private val blackKey = booleanPreferencesKey("pure_black")
     private val voice = stringPreferencesKey("voice_lang")
     private val asked = booleanPreferencesKey("asked_notif")
     private val seed = intPreferencesKey("seed_version")
@@ -56,6 +62,8 @@ class Prefs(context: Context) {
     val settings: Flow<Settings> = appContext.dataStore.data.map {
         Settings(
             theme = it[theme] ?: "system",
+            palette = it[paletteKey] ?: "violet",
+            pureBlack = it[blackKey] ?: false,
             voiceLang = it[voice] ?: "en-IN",
             askedNotifications = it[asked] ?: false,
             voiceEnabled = it[voiceOn] ?: true,
@@ -75,6 +83,14 @@ class Prefs(context: Context) {
 
     suspend fun setTheme(value: String) {
         appContext.dataStore.edit { it[theme] = value }
+    }
+
+    suspend fun setPalette(value: String) {
+        appContext.dataStore.edit { it[paletteKey] = value }
+    }
+
+    suspend fun setPureBlack(value: Boolean) {
+        appContext.dataStore.edit { it[blackKey] = value }
     }
 
     suspend fun setVoiceLang(value: String) {

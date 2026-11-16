@@ -51,7 +51,8 @@ import com.kye.app.domain.UNCATEGORISED_COLOR
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.components.CategoryAvatar
 import com.kye.app.ui.components.EmptyState
-import com.kye.app.ui.theme.HeroBrush
+import com.kye.app.ui.theme.LocalHeroBrush
+import com.kye.app.ui.components.tabBottomPadding
 import java.time.LocalDate
 
 @Composable
@@ -66,7 +67,7 @@ fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = tabBottomPadding(96.dp)),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item(key = "title") {
@@ -78,7 +79,7 @@ fun RecurringScreen(vm: KyeViewModel, onOpenRule: (Long) -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(HeroBrush)
+                    .background(LocalHeroBrush.current)
                     .padding(20.dp)
             ) {
                 Column {

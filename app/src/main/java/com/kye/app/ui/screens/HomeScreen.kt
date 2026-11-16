@@ -54,6 +54,11 @@ import com.kye.app.domain.GoldSchemes
 import com.kye.app.domain.HomeState
 import com.kye.app.domain.Money
 import com.kye.app.domain.Tone
+import com.kye.app.domain.Sky
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.layout.size
 import com.kye.app.ui.KyeViewModel
 import com.kye.app.ui.components.AnimatedAmount
 import com.kye.app.ui.components.CategoryAvatar
@@ -61,7 +66,8 @@ import com.kye.app.ui.components.EmptyState
 import com.kye.app.ui.components.ProgressBar
 import com.kye.app.ui.components.SectionCard
 import com.kye.app.ui.components.TxnItem
-import com.kye.app.ui.theme.HeroBrush
+import com.kye.app.ui.theme.LocalHeroBrush
+import com.kye.app.ui.components.tabBottomPadding
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -113,21 +119,20 @@ fun HomeScreen(
     }
     val today = LocalDate.now()
 
+    val hour = LocalTime.now().hour
+    val festival = remember(today) { Sky.festival(today) }
+    Box(Modifier.fillMaxSize()) {
+    SkyBackdrop(festival?.colors ?: Sky.time(hour).colors)
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 136.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = tabBottomPadding(136.dp)),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item(key = "header") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    val hour = LocalTime.now().hour
-                    val greet = when (hour) {
-                        in 5..11 -> "Good morning"
-                        in 12..16 -> "Good afternoon"
-                        else -> "Good evening"
-                    }
-                    Text("Vanakkam 🙏 $greet", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val greet = festival?.greeting ?: "Vanakkam 🙏 ${Sky.greeting(hour)} ${Sky.time(hour).emoji}"
+                    Text(greet, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f))
                     Text("Know Your Expense", style = MaterialTheme.typography.headlineSmall)
                 }
                 IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, contentDescription = "Settings") }
@@ -361,6 +366,7 @@ fun HomeScreen(
             TxnItem(row, Modifier.animateItem()) { onOpenTxn(row.txn.id) }
         }
     }
+    }
 }
 
 /** Rounded to the nearest ₹100: a forecast shouldn't look more exact than it is. */
@@ -427,7 +433,7 @@ private fun HeroCard(s: HomeState, today: LocalDate, onBudgets: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(28.dp))
-            .background(HeroBrush)
+            .background(LocalHeroBrush.current)
             .clickable(onClick = onBudgets)
             .padding(22.dp)
     ) {
@@ -475,5 +481,34 @@ private fun MiniStat(label: String, value: String, modifier: Modifier = Modifier
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.75f))
         Text(value, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+    }
+}
+
+/**
+ * Soft sky behind the top of Home: dawn orange, day blue, dusk purple, night navy, or a festival's
+ * colours. It fades into the page, and cards scroll up over it.
+ */
+@Composable
+private fun SkyBackdrop(colors: List<Long>) {
+    val bg = MaterialTheme.colorScheme.background
+    val strength = if (bg.luminance() < 0.5f) 0.42f else 0.5f
+    val stops = colors.map { Color(it).copy(alpha = strength).compositeOver(bg) } + bg
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(320.dp)
+            .background(Brush.verticalGradient(stops))
+    ) {
+        // A faint glow, like the sun or moon, in the top corner.
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 18.dp, end = 28.dp)
+                .size(150.dp)
+                .background(
+                    Brush.radialGradient(listOf(Color.White.copy(alpha = if (bg.luminance() < 0.5f) 0.10f else 0.35f), Color.Transparent)),
+                    androidx.compose.foundation.shape.CircleShape
+                )
+        )
     }
 }

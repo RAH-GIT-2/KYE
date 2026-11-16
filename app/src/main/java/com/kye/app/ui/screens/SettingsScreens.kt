@@ -14,6 +14,10 @@ import com.kye.app.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -261,6 +265,22 @@ fun SettingsScreen(
                     listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (v, label) ->
                         ChoiceChip(label, (settings?.theme ?: "system") == v, { vm.setTheme(v) })
                     }
+                }
+                Spacer(Modifier.height(14.dp))
+                Text("Colours", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                PaletteSwatches(settings?.palette ?: "violet") { vm.setPalette(it) }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Pure black in dark mode", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Deeper blacks; saves battery on most phones",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = settings?.pureBlack ?: false, onCheckedChange = { vm.setPureBlack(it) })
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -614,6 +634,46 @@ private fun BudgetRowItem(emoji: String, color: Long, name: String, spent: Long,
                         else -> MaterialTheme.colorScheme.secondary
                     }
                 )
+            }
+        }
+    }
+}
+
+/** One circle per colour set; the first takes its colours from the phone's wallpaper. */
+@Composable
+private fun PaletteSwatches(selected: String, onPick: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wall = remember { androidx.compose.material3.dynamicLightColorScheme(context) }
+    val options = listOf(
+        Triple(com.kye.app.ui.theme.WALLPAPER, "Wallpaper", listOf(wall.primary, wall.tertiary))
+    ) + com.kye.app.ui.theme.Palettes.map { p -> Triple(p.key, p.label, p.hero.map { Color(it) }) }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        options.forEach { (key, label, colors) ->
+            val on = key == selected
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .clickable { onPick(key) }
+                    .padding(4.dp)
+            ) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .border(
+                            if (on) 3.dp else 0.dp,
+                            if (on) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                            androidx.compose.foundation.shape.CircleShape
+                        )
+                        .padding(if (on) 5.dp else 0.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(androidx.compose.ui.graphics.Brush.linearGradient(colors)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (on) Text("✓", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(label, style = MaterialTheme.typography.labelSmall)
             }
         }
     }

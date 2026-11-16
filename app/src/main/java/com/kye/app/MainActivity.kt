@@ -43,9 +43,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
@@ -101,6 +98,24 @@ import com.kye.app.ui.screens.RuleEditScreen
 import com.kye.app.ui.screens.SettingsScreen
 import com.kye.app.ui.screens.VoiceSheet
 import com.kye.app.ui.theme.KyeTheme
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeChild
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 
 /** FragmentActivity because the fingerprint / PIN prompt needs it. */
 class MainActivity : FragmentActivity() {
@@ -116,7 +131,7 @@ class MainActivity : FragmentActivity() {
         action.value = intent?.getStringExtra(EXTRA_ACTION)
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
-            KyeTheme(settings?.theme ?: "system") {
+            KyeTheme(settings?.theme ?: "system", settings?.palette ?: "violet", settings?.pureBlack ?: false) {
                 val s = settings
                 when {
                     // Settings not read yet: show nothing rather than flash the data before a lock.
@@ -203,6 +218,8 @@ private val tabs = listOf(
 @Composable
 private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
     val nav = rememberNavController()
+    // The screen behind the floating bottom bar, blurred through it.
+    val haze = remember { HazeState() }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val onTab = tabs.any { it.route == route }
@@ -243,19 +260,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                 enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180))
             ) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
-                    tabs.forEach { t ->
-                        NavigationBarItem(
-                            selected = route == t.route,
-                            onClick = { nav.goTab(t.route) },
-                            icon = { Icon(t.icon, contentDescription = t.label) },
-                            label = { Text(t.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                            )
-                        )
-                    }
-                }
+                GlassBar(route, haze) { nav.goTab(it) }
             }
         },
         floatingActionButton = {
@@ -303,7 +308,8 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
         NavHost(
             navController = nav,
             startDestination = "home",
-            modifier = Modifier.padding(pad),
+            // Screens run under the floating bar (it is see-through); tab screens leave room at the bottom.
+            modifier = Modifier.padding(top = pad.calculateTopPadding()).haze(haze),
             enterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f) },
             exitTransition = { fadeOut(tween(150)) },
             popEnterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f) },
@@ -435,5 +441,74 @@ private fun NavHostController.goTab(route: String) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+/**
+ * Floating, frosted bottom bar: a rounded pill above the phone's own buttons. What scrolls under
+ * it shows through, blurred. The chosen tab gets a soft pill of colour behind its icon.
+ */
+@Composable
+private fun GlassBar(route: String?, haze: HazeState, onTab: (String) -> Unit) {
+    val shape = RoundedCornerShape(32.dp)
+    val cs = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .shadow(18.dp, shape, ambientColor = cs.primary.copy(alpha = 0.25f), spotColor = cs.primary.copy(alpha = 0.25f))
+            .clip(shape)
+            .hazeChild(haze) {
+                backgroundColor = cs.background
+                tints = listOf(HazeTint(cs.surfaceContainerLowest.copy(alpha = 0.70f)))
+                blurRadius = 24.dp
+                fallbackTint = HazeTint(cs.surfaceContainerLowest.copy(alpha = 0.96f))
+            }
+            .border(1.dp, cs.outlineVariant.copy(alpha = 0.6f), shape)
+            .height(66.dp)
+            .selectableGroup(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        tabs.forEach { t ->
+            val selected = route == t.route
+            val pill by animateColorAsState(
+                if (selected) cs.primaryContainer else Color.Transparent, tween(250), label = "tab"
+            )
+            val tint by animateColorAsState(
+                if (selected) cs.onPrimaryContainer else cs.onSurfaceVariant, tween(250), label = "tabTint"
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .selectable(
+                        selected = selected,
+                        onClick = { onTab(t.route) },
+                        role = Role.Tab,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(pill)
+                        .padding(horizontal = 18.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(t.icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    t.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = tint
+                )
+            }
+        }
     }
 }

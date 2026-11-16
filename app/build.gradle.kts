@@ -13,10 +13,10 @@ android {
 
     defaultConfig {
         applicationId = "com.kye.app"
-        minSdk = 26
+        minSdk = 31
         targetSdk = 35
-        versionCode = 25
-        versionName = "2.9"
+        versionCode = 26
+        versionName = "3.0"
     }
 
     // The release key lives outside the repo. keystore.properties is gitignored; without it the
@@ -109,6 +109,8 @@ dependencies {
     // biometric 1.1.0 pulls in fragment 1.2.5 (2020), far older than activity 1.9.3 / lifecycle 2.8.7.
     // MainActivity is a FragmentActivity, so pin a fragment release built for these versions.
     implementation("androidx.fragment:fragment-ktx:1.8.5")
+    // Frosted-glass blur behind the floating bottom bar (1.1.x matches Compose 1.7).
+    implementation("dev.chrisbanes.haze:haze:1.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

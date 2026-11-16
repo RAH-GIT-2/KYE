@@ -403,6 +403,8 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- Settings ----------
 
     fun setTheme(value: String) = viewModelScope.launch { prefs.setTheme(value) }
+    fun setPalette(value: String) = viewModelScope.launch { prefs.setPalette(value) }
+    fun setPureBlack(value: Boolean) = viewModelScope.launch { prefs.setPureBlack(value) }
     fun setVoiceLang(value: String) = viewModelScope.launch { prefs.setVoiceLang(value) }
     fun setVoiceEnabled(value: Boolean) = viewModelScope.launch { prefs.setVoiceEnabled(value) }
     fun setAppLock(value: Boolean) = viewModelScope.launch { prefs.setAppLock(value) }

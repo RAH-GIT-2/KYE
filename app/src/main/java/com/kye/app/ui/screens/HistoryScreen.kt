@@ -67,6 +67,7 @@ import com.kye.app.ui.components.EmptyState
 import com.kye.app.ui.components.EventChips
 import com.kye.app.ui.components.PaymentChips
 import com.kye.app.ui.components.TxnItem
+import com.kye.app.ui.components.tabBottomPadding
 
 /** Which category kind an entry type uses (transfers live under expense categories). */
 private fun kindFor(type: TxnType): CategoryKind = when (type) {
@@ -116,7 +117,7 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = tabBottomPadding(96.dp))
     ) {
         if (selecting) {
             stickyHeader(key = "selection") {

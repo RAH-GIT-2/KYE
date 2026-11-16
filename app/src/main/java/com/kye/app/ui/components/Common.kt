@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -364,3 +366,12 @@ fun EmptyState(emoji: String, title: String, body: String, modifier: Modifier = 
         Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/**
+ * Bottom room for a tab screen's list: [extra] (e.g. for the + button) plus the floating bottom
+ * bar and the phone's own navigation buttons, so the last entry can scroll clear of them.
+ */
+@Composable
+fun tabBottomPadding(extra: Dp): Dp =
+    extra + 86.dp + androidx.compose.foundation.layout.WindowInsets.navigationBars
+        .asPaddingValues().calculateBottomPadding()
