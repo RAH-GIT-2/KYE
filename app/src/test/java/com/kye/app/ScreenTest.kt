@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import org.junit.After
+import org.junit.Before
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -43,6 +44,13 @@ class ScreenTest {
     /** Opens KYE. Tests that need entries add them first, like opening the app with data in it. */
     private fun launch() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
+    }
+
+    /** Entries can still be there from the test before (the app's files outlive one test), so start empty. */
+    @Before fun startEmpty() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<KyeApp>()
+        val db = app.container.db.openHelper.writableDatabase
+        listOf("attachment", "warranty", "txn").forEach { db.execSQL("DELETE FROM $it") }
     }
 
     @After fun close() {
