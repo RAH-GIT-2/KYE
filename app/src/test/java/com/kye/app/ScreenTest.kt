@@ -7,7 +7,6 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
-import androidx.test.core.app.ApplicationProvider
 import org.junit.After
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
@@ -21,19 +20,11 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
-import com.kye.app.data.PaymentMode
-import com.kye.app.data.Txn
-import com.kye.app.data.TxnType
-import com.kye.app.domain.Dates
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.time.LocalDate
-import java.time.LocalTime
 
 /**
  * Taps through the real app the way a person would: tabs, adding an entry, History search and
@@ -100,17 +91,21 @@ class ScreenTest {
         waitForText("Quick type")
     }
 
-    private fun addEntries(vararg notes: String) = runBlocking {
-        val repo = ApplicationProvider.getApplicationContext<KyeApp>().container.repo
+    /**
+     * Opens KYE and adds entries through the + form, the way a person does. (Entries written
+     * straight into the database before the app opens don't reach the screen under Robolectric.)
+     */
+    private fun launchWithEntries(vararg notes: String) {
+        launch()
+        waitForText("Know Your Expense")
         notes.forEachIndexed { i, note ->
-            repo.saveTxn(
-                Txn(
-                    amountPaise = (100L + i) * 100, type = TxnType.EXPENSE, categoryId = null, subcategoryId = null,
-                    dateTime = Dates.atMillis(LocalDate.now(), LocalTime.NOON), paymentMode = PaymentMode.UPI, note = note
-                )
-            )
+            openAdd()
+            rule.onNodeWithTag("amount").performTextInput("${101 + i}")
+            rule.onNodeWithText("Note (optional)").performScrollTo().performTextInput(note)
+            rule.onNodeWithText("Save").performClick()
+            waitFor { rule.onAllNodesWithText("Quick type").fetchSemanticsNodes().isEmpty() }
+            waitForText(note)
         }
-        println("SCREEN entries in the database: ${repo.transactions.first().size}")
     }
 
     @Test fun eachTabOpens() {
@@ -158,13 +153,7 @@ class ScreenTest {
     }
 
     @Test fun historySearchFindsOnlyMatches() {
-        addEntries("Swiggy dinner", "Petrol")
-        launch()
-        var vmSize = -1
-        runCatching { waitFor { scenario!!.onActivity { vmSize = androidx.lifecycle.ViewModelProvider(it)[com.kye.app.ui.KyeViewModel::class.java].txns.value.size }; vmSize > 0 } }
-        println("SCREEN entries the screen sees: $vmSize; in the database now: ${runBlocking { ApplicationProvider.getApplicationContext<KyeApp>().container.repo.transactions.first().size }}")
-        // Home lists them under Recent.
-        waitForText("Swiggy dinner")
+        launchWithEntries("Swiggy dinner", "Petrol")
         openHistory()
         waitForText("Swiggy dinner")
         waitForText("Petrol")
@@ -175,10 +164,7 @@ class ScreenTest {
     }
 
     @Test fun historyDeletesSelectedEntries() {
-        addEntries("Swiggy dinner", "Petrol")
-        launch()
-        // Home lists them under Recent.
-        waitForText("Swiggy dinner")
+        launchWithEntries("Swiggy dinner", "Petrol")
         openHistory()
         waitForText("Swiggy dinner")
 
