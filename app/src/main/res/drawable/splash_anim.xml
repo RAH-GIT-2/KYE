@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch: the wallet pops in, its flap closes, then a coin drops into the pocket. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:drawable="@drawable/splash_icon">
+    <target android:name="wallet">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="420"
+                    android:interpolator="@android:anim/overshoot_interpolator"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0"
+                    android:valueTo="1" />
+                <objectAnimator
+                    android:duration="420"
+                    android:interpolator="@android:anim/overshoot_interpolator"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0"
+                    android:valueTo="1" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="flap">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="300"
+                android:interpolator="@android:anim/decelerate_interpolator"
+                android:propertyName="rotation"
+                android:startOffset="260"
+                android:valueFrom="-35"
+                android:valueTo="0" />
+        </aapt:attr>
+    </target>
+    <target android:name="coin">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="120"
+                    android:propertyName="scaleX"
+                    android:startOffset="440"
+                    android:valueFrom="0"
+                    android:valueTo="1" />
+                <objectAnimator
+                    android:duration="120"
+                    android:propertyName="scaleY"
+                    android:startOffset="440"
+                    android:valueFrom="0"
+                    android:valueTo="1" />
+                <objectAnimator
+                    android:duration="420"
+                    android:interpolator="@android:anim/bounce_interpolator"
+                    android:propertyName="translateY"
+                    android:startOffset="440"
+                    android:valueFrom="-34"
+                    android:valueTo="0" />
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

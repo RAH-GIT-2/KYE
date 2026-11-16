@@ -3,5 +3,10 @@
         <item name="android:windowBackground">@color/kye_bg</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Launch screen (Android 12+): the wallet builds itself on the app colour. -->
+        <item name="android:windowSplashScreenBackground">@color/kye_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_anim</item>
+        <item name="android:windowSplashScreenAnimationDuration">900</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>
     </style>
 </resources>

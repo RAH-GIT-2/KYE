@@ -4,6 +4,9 @@ package com.kye.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import com.kye.app.ui.components.sharedCard
+import com.kye.app.ui.components.entryKey
+import com.kye.app.ui.components.NEW_ENTRY_KEY
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.rounded.Check
@@ -335,6 +338,8 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     }
 
     Scaffold(
+        // Grows out of the row (or the + button) that opened it.
+        modifier = Modifier.sharedCard(if (txnId > 0) entryKey(txnId) else NEW_ENTRY_KEY),
         topBar = {
             TopAppBar(
                 title = { Text(if (txnId > 0) "Edit entry" else "Add entry") },

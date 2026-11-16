@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
 package com.kye.app
 
 import android.Manifest
@@ -100,6 +102,16 @@ import com.kye.app.ui.screens.StoryScreen
 import com.kye.app.ui.screens.VoiceSheet
 import com.kye.app.ui.theme.KyeTheme
 import com.kye.app.ui.components.ConfettiBurst
+import com.kye.app.ui.components.LocalNavAnimatedScope
+import com.kye.app.ui.components.LocalSharedScope
+import com.kye.app.ui.components.NEW_ENTRY_KEY
+import com.kye.app.ui.components.sharedCard
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.navigation.NamedNavArgument
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.HazeTint
@@ -130,6 +142,14 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // The launch screen leaves by growing a little and fading, instead of cutting away.
+        runCatching {
+            splashScreen.setOnExitAnimationListener { view ->
+                view.animate().alpha(0f).scaleX(1.12f).scaleY(1.12f).setDuration(280)
+                    .withEndAction { view.remove() }
+                    .start()
+            }
+        }
         action.value = intent?.getStringExtra(EXTRA_ACTION)
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
@@ -254,6 +274,9 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
         }
     }
 
+    // Lets a tapped row or the + button grow into the screen it opens.
+    SharedTransitionLayout {
+    CompositionLocalProvider(LocalSharedScope provides this) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
@@ -279,6 +302,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     if (micHere) {
                         SmallFloatingActionButton(
                             onClick = { nav.navigate("add") },
+                            modifier = Modifier.sharedCard(NEW_ENTRY_KEY, this@AnimatedVisibility),
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                             shape = RoundedCornerShape(14.dp)
@@ -292,6 +316,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     } else {
                         FloatingActionButton(
                             onClick = { nav.navigate(if (onRecurring) "rule" else "add") },
+                            modifier = if (onRecurring) Modifier else Modifier.sharedCard(NEW_ENTRY_KEY, this@AnimatedVisibility),
                             shape = RoundedCornerShape(18.dp),
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -315,9 +340,10 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
             enterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f) },
             exitTransition = { fadeOut(tween(150)) },
             popEnterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f) },
-            popExitTransition = { fadeOut(tween(150)) }
+            // Going back (also while the back swipe is in progress) shrinks the screen away.
+            popExitTransition = { fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.9f) }
         ) {
-            composable("home") {
+            screen("home") {
                 HomeScreen(
                     vm = vm,
                     onOpenTxn = { nav.navigate("add?id=$it") },
@@ -334,39 +360,39 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onStory = { nav.navigate("story/$it") }
                 )
             }
-            composable("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
-            composable(
+            screen("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
+            screen(
                 "goal/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 GoalDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            composable("schemes") { GoldSchemesScreen(vm, onOpen = { nav.navigate("scheme/$it") }) { nav.popBackStack() } }
-            composable(
+            screen("schemes") { GoldSchemesScreen(vm, onOpen = { nav.navigate("scheme/$it") }) { nav.popBackStack() } }
+            screen(
                 "scheme/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 GoldSchemeDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            composable("cards") { CardsScreen(vm, onOpen = { nav.navigate("card/$it") }) { nav.popBackStack() } }
-            composable(
+            screen("cards") { CardsScreen(vm, onOpen = { nav.navigate("card/$it") }) { nav.popBackStack() } }
+            screen(
                 "card/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 CardDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            composable("subscriptions") {
+            screen("subscriptions") {
                 SubscriptionsScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") }, onNew = { nav.navigate("rule") }) { nav.popBackStack() }
             }
-            composable("warranties") { WarrantiesScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() } }
-            composable("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
-            composable(
+            screen("warranties") { WarrantiesScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() } }
+            screen("events") { EventsScreen(vm, onOpen = { nav.navigate("event/$it") }) { nav.popBackStack() } }
+            screen(
                 "event/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 EventDetailScreen(vm, e.arguments?.getLong("id") ?: -1L, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.popBackStack() }
             }
-            composable(
+            screen(
                 "ask?mic={mic}",
                 arguments = listOf(navArgument("mic") { type = NavType.BoolType; defaultValue = false })
             ) { e ->
@@ -376,19 +402,19 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onOpenTxn = { nav.navigate("add?id=$it") }
                 ) { nav.popBackStack() }
             }
-            composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
-            composable("insights") {
+            screen("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
+            screen("insights") {
                 InsightsScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }, onStory = { nav.navigate("story/$it") }) { nav.navigate("budgets") }
             }
-            composable("story/{month}") { e ->
+            screen("story/{month}") { e ->
                 val month = runCatching { java.time.YearMonth.parse(e.arguments?.getString("month")) }
                     .getOrElse { java.time.YearMonth.now().minusMonths(1) }
                 StoryScreen(vm, month) { nav.popBackStack() }
             }
-            composable("recurring") {
+            screen("recurring") {
                 RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") })
             }
-            composable(
+            screen(
                 "add?id={id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })
             ) { e ->
@@ -398,22 +424,22 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onManageCategories = { nav.navigate("categories") }
                 ) { nav.popBackStack() }
             }
-            composable("categories") {
+            screen("categories") {
                 CategoriesScreen(vm, onOpen = { nav.navigate("category/$it") }) { nav.popBackStack() }
             }
-            composable(
+            screen(
                 "category/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 CategoryDetailScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
-            composable(
+            screen(
                 "rule?id={id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })
             ) { e ->
                 RuleEditScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
-            composable("settings") {
+            screen("settings") {
                 SettingsScreen(
                     vm,
                     onBack = { nav.popBackStack() },
@@ -429,16 +455,18 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onWarranties = { nav.navigate("warranties") }
                 )
             }
-            composable("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }
-            composable("import") { ImportScreen(vm) { nav.popBackStack() } }
-            composable("loans") { LoansScreen(vm, onOpen = { nav.navigate("loan/$it") }) { nav.popBackStack() } }
-            composable(
+            screen("budgets") { BudgetsScreen(vm) { nav.popBackStack() } }
+            screen("import") { ImportScreen(vm) { nav.popBackStack() } }
+            screen("loans") { LoansScreen(vm, onOpen = { nav.navigate("loan/$it") }) { nav.popBackStack() } }
+            screen(
                 "loan/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { e ->
                 LoanDetailScreen(vm, e.arguments?.getLong("id") ?: -1L) { nav.popBackStack() }
             }
         }
+    }
+    }
     }
 
     if (vm.voiceOpen) {
@@ -521,5 +549,16 @@ private fun GlassBar(route: String?, haze: HazeState, onTab: (String) -> Unit) {
                 )
             }
         }
+    }
+}
+
+/** A navigation destination that also hands its enter/leave animation to shared cards. */
+private fun NavGraphBuilder.screen(
+    route: String,
+    arguments: List<NamedNavArgument> = emptyList(),
+    content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit
+) {
+    composable(route, arguments) { e ->
+        CompositionLocalProvider(LocalNavAnimatedScope provides this) { content(e) }
     }
 }

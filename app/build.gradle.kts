@@ -15,8 +15,8 @@ android {
         applicationId = "com.kye.app"
         minSdk = 31
         targetSdk = 35
-        versionCode = 29
-        versionName = "3.3"
+        versionCode = 30
+        versionName = "3.4"
     }
 
     // The release key lives outside the repo. keystore.properties is gitignored; without it the

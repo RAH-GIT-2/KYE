@@ -224,6 +224,15 @@ class ScreenTest {
         waitForText("Spending calendar")
     }
 
+    @Test fun tappedEntryOpensItsFormAndGoesBack() {
+        launchWithEntries("Open me chai")
+        rule.onNodeWithText("Open me chai").performClick()
+        waitForText("Edit entry")
+        back()
+        waitFor { rule.onAllNodesWithText("Edit entry").fetchSemanticsNodes().isEmpty() }
+        waitForText("Know Your Expense")
+    }
+
     @Test fun coloursAndPureBlackSwitch() {
         launch()
         waitForText("Know Your Expense")
