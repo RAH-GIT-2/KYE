@@ -96,6 +96,7 @@ import com.kye.app.ui.screens.InsightsScreen
 import com.kye.app.ui.screens.RecurringScreen
 import com.kye.app.ui.screens.RuleEditScreen
 import com.kye.app.ui.screens.SettingsScreen
+import com.kye.app.ui.screens.StoryScreen
 import com.kye.app.ui.screens.VoiceSheet
 import com.kye.app.ui.theme.KyeTheme
 import com.kye.app.ui.components.ConfettiBurst
@@ -329,7 +330,8 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                     onEvent = { nav.navigate("event/$it") },
                     onGoal = { nav.navigate("goal/$it") },
                     onScheme = { nav.navigate("scheme/$it") },
-                    onCard = { nav.navigate("card/$it") }
+                    onCard = { nav.navigate("card/$it") },
+                    onStory = { nav.navigate("story/$it") }
                 )
             }
             composable("goals") { GoalsScreen(vm, onOpen = { nav.navigate("goal/$it") }) { nav.popBackStack() } }
@@ -375,7 +377,14 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
                 ) { nav.popBackStack() }
             }
             composable("history") { HistoryScreen(vm) { nav.navigate("add?id=$it") } }
-            composable("insights") { InsightsScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }) { nav.navigate("budgets") } }
+            composable("insights") {
+                InsightsScreen(vm, onOpenTxn = { nav.navigate("add?id=$it") }, onStory = { nav.navigate("story/$it") }) { nav.navigate("budgets") }
+            }
+            composable("story/{month}") { e ->
+                val month = runCatching { java.time.YearMonth.parse(e.arguments?.getString("month")) }
+                    .getOrElse { java.time.YearMonth.now().minusMonths(1) }
+                StoryScreen(vm, month) { nav.popBackStack() }
+            }
             composable("recurring") {
                 RecurringScreen(vm, onOpenRule = { nav.navigate("rule?id=$it") })
             }

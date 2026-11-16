@@ -99,7 +99,8 @@ fun HomeScreen(
     onEvent: (Long) -> Unit,
     onGoal: (Long) -> Unit,
     onScheme: (Long) -> Unit,
-    onCard: (Long) -> Unit
+    onCard: (Long) -> Unit,
+    onStory: (String) -> Unit = {}
 ) {
     val cardStatuses by vm.cardStatuses.collectAsStateWithLifecycle()
     // Card bills due within 5 days, or overdue.
@@ -155,6 +156,30 @@ fun HomeScreen(
         }
 
         item(key = "hero") { HeroCard(s, today, onBudgets) }
+
+        // First week of a month: last month's story, as full-screen cards.
+        if (s.loaded && today.dayOfMonth <= 7 && s.lastMonthSpent > 0) {
+            item(key = "story") {
+                val last = today.minusMonths(1)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFFB0124F), Color(0xFFFF9F43))))
+                        .clickable { onStory(last.toString().take(7)) }
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("📖", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Your ${Dates.monthName(last)} story", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                        Text("Tap to watch your month in a few cards", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f))
+                    }
+                    Text("▶", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                }
+            }
+        }
 
         // First week of a month: last month stayed within the overall budget. Confetti once.
         val budget = s.budget

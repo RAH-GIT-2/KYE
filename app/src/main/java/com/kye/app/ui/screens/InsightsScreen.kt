@@ -74,7 +74,7 @@ import com.kye.app.ui.theme.paymentColor
 import java.time.LocalDate
 
 @Composable
-fun InsightsScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit = {}, onBudgets: () -> Unit) {
+fun InsightsScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit = {}, onStory: (String) -> Unit = {}, onBudgets: () -> Unit) {
     val allTxns by vm.txns.collectAsStateWithLifecycle()
     val period by vm.period.collectAsStateWithLifecycle()
     val a by vm.analytics.collectAsStateWithLifecycle()
@@ -101,7 +101,7 @@ fun InsightsScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit = {}, onBudgets: 
             return@LazyColumn
         }
         item(key = "summary") { Column { Summary(s) } }
-        item(key = "calendar") { SpendCalendarCard(allTxns, onOpenTxn) }
+        item(key = "calendar") { SpendCalendarCard(allTxns, onOpenTxn, onStory) }
 
         if (s.count == 0) {
             item(key = "empty") { EmptyState("📊", "No spending in this period", "Add a few entries and your charts appear here") }

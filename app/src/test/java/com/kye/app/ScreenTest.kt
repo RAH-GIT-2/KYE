@@ -208,6 +208,17 @@ class ScreenTest {
         waitForText("Calendar snack")
     }
 
+    @Test fun storyOpensFromTheCalendarAndCloses() {
+        launchWithEntries("Story tea")
+        tab("Insights").performClick()
+        waitForText("▶ Watch this month's story")
+        rule.onNodeWithText("▶ Watch this month's story").performScrollTo().performClick()
+        waitForText("KYE story")
+        waitForText("Share")
+        rule.onNodeWithContentDescription("Close").performClick()
+        waitForText("Spending calendar")
+    }
+
     @Test fun coloursAndPureBlackSwitch() {
         launch()
         waitForText("Know Your Expense")

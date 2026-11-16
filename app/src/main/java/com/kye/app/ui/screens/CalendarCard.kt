@@ -60,7 +60,7 @@ import java.util.Locale
  * Tap a day to list its entries underneath; arrows move between months.
  */
 @Composable
-fun SpendCalendarCard(txns: List<TxnRow>, onOpenTxn: (Long) -> Unit) {
+fun SpendCalendarCard(txns: List<TxnRow>, onOpenTxn: (Long) -> Unit, onStory: (String) -> Unit = {}) {
     val today = LocalDate.now()
     var monthText by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
     val month = YearMonth.parse(monthText)
@@ -102,6 +102,12 @@ fun SpendCalendarCard(txns: List<TxnRow>, onOpenTxn: (Long) -> Unit) {
                         modifier = Modifier.weight(1f)
                     )
                     Text(Money.format(m.total), style = MaterialTheme.typography.titleMedium)
+                }
+                if (m.total > 0) {
+                    androidx.compose.material3.TextButton(
+                        onClick = { onStory(m.month.toString()) },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp)
+                    ) { Text("▶ Watch this month's story") }
                 }
                 if (m.noSpendDays > 0) {
                     Text(
