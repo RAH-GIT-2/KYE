@@ -179,6 +179,22 @@ class ScreenTest {
         waitForText("No entries yet")
     }
 
+    @Test fun coloursAndPureBlackSwitch() {
+        launch()
+        waitForText("Know Your Expense")
+        rule.onNodeWithContentDescription("Settings").performClick()
+        waitForText("Settings")
+        listOf("Ocean", "Wallpaper", "Gold", "Violet").forEach { name ->
+            rule.onNodeWithText(name).performScrollTo().performClick()
+            rule.waitForIdle()
+        }
+        rule.onNodeWithText("Dark").performScrollTo().performClick()
+        rule.onNodeWithText("Pure black in dark mode").performScrollTo().performClick()
+        rule.waitForIdle()
+        back()
+        waitForText("Know Your Expense")
+    }
+
     @Test fun everySettingsPageOpens() {
         launch()
         waitForText("Know Your Expense")

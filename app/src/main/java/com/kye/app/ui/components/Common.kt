@@ -3,6 +3,18 @@
 package com.kye.app.ui.components
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -80,15 +92,33 @@ fun CategoryAvatar(emoji: String, color: Long, size: Dp = 44.dp) {
     }
 }
 
-/** Counts up smoothly whenever the amount changes. */
+/**
+ * Rolls like a car's odometer when the amount changes: only the digits that change slide, up when
+ * the amount grows and down when it shrinks. Read out as one amount by screen readers.
+ */
 @Composable
 fun AnimatedAmount(paise: Long, style: TextStyle, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {
-    val value by animateFloatAsState(
-        targetValue = (paise / 100).toFloat(),
-        animationSpec = tween(650, easing = FastOutSlowInEasing),
-        label = "amount"
-    )
-    Text(Money.format(value.toLong() * 100), style = style, color = color, modifier = modifier, maxLines = 1)
+    val text = Money.format(paise)
+    val last = remember { mutableLongStateOf(paise) }
+    val up = paise >= last.longValue
+    LaunchedEffect(paise) { last.longValue = paise }
+    Row(modifier.clearAndSetSemantics { this.text = AnnotatedString(text) }) {
+        // Keyed from the right, so the units digit stays the units digit when ₹999 becomes ₹1,000.
+        text.forEachIndexed { i, ch ->
+            key(text.length - i) {
+                AnimatedContent(
+                    targetState = ch,
+                    transitionSpec = {
+                        val dir = if (up) 1 else -1
+                        (slideInVertically(tween(420)) { h -> h * dir } + fadeIn(tween(420)))
+                            .togetherWith(slideOutVertically(tween(420)) { h -> -h * dir } + fadeOut(tween(300)))
+                            .using(SizeTransform(clip = true))
+                    },
+                    label = "digit"
+                ) { c -> Text(c.toString(), style = style, color = color, maxLines = 1) }
+            }
+        }
+    }
 }
 
 @Composable
@@ -375,3 +405,54 @@ fun EmptyState(emoji: String, title: String, body: String, modifier: Modifier = 
 fun tabBottomPadding(extra: Dp): Dp =
     extra + 86.dp + androidx.compose.foundation.layout.WindowInsets.navigationBars
         .asPaddingValues().calculateBottomPadding()
+
+/** A soft light that sweeps across placeholders while data loads. */
+@Composable
+fun shimmerBrush(): androidx.compose.ui.graphics.Brush {
+    val base = MaterialTheme.colorScheme.surfaceVariant
+    val shine = MaterialTheme.colorScheme.surfaceContainerLowest
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "shimmer")
+    val x by t.animateFloat(
+        initialValue = -400f,
+        targetValue = 1400f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(tween(1300, easing = androidx.compose.animation.core.LinearEasing)),
+        label = "shimmerX"
+    )
+    return androidx.compose.ui.graphics.Brush.linearGradient(
+        listOf(base, shine, base),
+        start = androidx.compose.ui.geometry.Offset(x, 0f),
+        end = androidx.compose.ui.geometry.Offset(x + 400f, 200f)
+    )
+}
+
+/** Grey stand-ins for entry rows, shown until the real list is ready. */
+@Composable
+fun LoadingRows(count: Int = 5) {
+    val brush = shimmerBrush()
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+        repeat(count) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(44.dp).clip(CircleShape).background(brush))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Box(Modifier.fillMaxWidth(0.55f).height(14.dp).clip(RoundedCornerShape(50)).background(brush))
+                    Spacer(Modifier.height(8.dp))
+                    Box(Modifier.fillMaxWidth(0.35f).height(10.dp).clip(RoundedCornerShape(50)).background(brush))
+                }
+                Spacer(Modifier.width(12.dp))
+                Box(Modifier.width(60.dp).height(14.dp).clip(RoundedCornerShape(50)).background(brush))
+            }
+        }
+    }
+}
+
+/** Grey stand-ins for cards, shown until the first numbers are ready. */
+@Composable
+fun LoadingCards(count: Int = 3) {
+    val brush = shimmerBrush()
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        repeat(count) { i ->
+            Box(Modifier.fillMaxWidth().height(if (i == 0) 120.dp else 180.dp).clip(RoundedCornerShape(24.dp)).background(brush))
+        }
+    }
+}

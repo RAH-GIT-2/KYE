@@ -8,6 +8,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +69,7 @@ import com.kye.app.ui.components.ChoiceChip
 import com.kye.app.ui.components.EmptyState
 import com.kye.app.ui.components.ProgressBar
 import com.kye.app.ui.components.SectionCard
+import com.kye.app.ui.components.LoadingCards
 import com.kye.app.ui.theme.paymentColor
 import java.time.LocalDate
 
@@ -90,7 +94,11 @@ fun InsightsScreen(vm: KyeViewModel, onBudgets: () -> Unit) {
                 items(Period.entries) { p -> ChoiceChip(p.label, p == period, { vm.period.value = p }) }
             }
         }
-        val s = a ?: return@LazyColumn
+        val s = a
+        if (s == null) {
+            item(key = "loading") { LoadingCards() }
+            return@LazyColumn
+        }
         item(key = "summary") { Column { Summary(s) } }
 
         if (s.count == 0) {
@@ -165,7 +173,9 @@ private fun StatTile(label: String, value: String, modifier: Modifier = Modifier
 private fun CategoryCard(s: AnalyticsState) {
     var expanded by remember(s.period) { mutableStateOf<Long?>(-1L) }
     SectionCard(title = "Where it went", subtitle = "Tap a category for its breakdown") {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Donut(s.slices, s.spent) }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Donut(s.slices, s.spent, expanded) { key -> expanded = if (expanded == key) -1L else key }
+        }
         Spacer(Modifier.height(16.dp))
         s.slices.forEach { slice ->
             val key = slice.categoryId ?: 0L
@@ -216,11 +226,20 @@ private fun CategoryCard(s: AnalyticsState) {
 }
 
 @Composable
-private fun Donut(slices: List<Slice>, total: Long) {
+/**
+ * Category donut. It sweeps round when it appears; tapping a slice pops it out (the others dim)
+ * and shows its name and amount in the middle. [selected] is the open category key, -1 for none.
+ */
+private fun Donut(slices: List<Slice>, total: Long, selected: Long, onSelect: (Long) -> Unit) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(slices) {
         progress.snapTo(0f)
         progress.animateTo(1f, tween(900, easing = FastOutSlowInEasing))
+    }
+    val pop = remember { Animatable(0f) }
+    LaunchedEffect(selected) {
+        pop.snapTo(0f)
+        if (selected != -1L) pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
     }
     val track = MaterialTheme.colorScheme.surfaceVariant
     // Top 7 categories, the rest merged into one grey arc
@@ -228,11 +247,33 @@ private fun Donut(slices: List<Slice>, total: Long) {
         val rest = slices.drop(7).sumOf { it.total }
         slices.take(7) + Slice(null, "Rest", "•", 0xFFB2BEC3, rest, emptyList())
     }
-    Box(Modifier.size(210.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
+    val keyOf = { sl: Slice -> sl.categoryId ?: 0L }
+    val pick = shown.firstOrNull { it.categoryId != null && keyOf(it) == selected }
+    Box(Modifier.size(230.dp), contentAlignment = Alignment.Center) {
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(shown, total) {
+                    detectTapGestures { pos ->
+                        if (total <= 0) return@detectTapGestures
+                        val dx = pos.x - size.width / 2f
+                        val dy = pos.y - size.height / 2f
+                        val r = kotlin.math.sqrt(dx * dx + dy * dy)
+                        // Only taps on the ring itself, not the middle.
+                        if (r < size.width * 0.28f) return@detectTapGestures
+                        // Angle from 12 o'clock, clockwise, 0..360.
+                        val deg = (Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f + 360f) % 360f
+                        var acc = 0f
+                        shown.firstOrNull { sl ->
+                            acc += 360f * sl.total / total
+                            deg < acc
+                        }?.takeIf { it.categoryId != null }?.let { onSelect(keyOf(it)) }
+                    }
+                }
+        ) {
             val stroke = 30.dp.toPx()
-            val inset = stroke / 2
-            val arc = Size(size.width - stroke, size.height - stroke)
+            val inset = stroke / 2 + 10.dp.toPx()
+            val arc = Size(size.width - inset * 2, size.height - inset * 2)
             drawArc(track, 0f, 360f, false, topLeft = Offset(inset, inset), size = arc, style = Stroke(stroke))
             if (total > 0) {
                 var start = -90f
@@ -240,23 +281,35 @@ private fun Donut(slices: List<Slice>, total: Long) {
                 shown.forEach { sl ->
                     val sweep = 360f * sl.total / total * progress.value
                     if (sweep > gap) {
+                        val isPick = pick != null && sl === pick
+                        // The tapped slice moves out along its middle and thickens a little.
+                        val mid = Math.toRadians((start + sweep / 2).toDouble())
+                        val out = if (isPick) 9.dp.toPx() * pop.value else 0f
+                        val shift = Offset((kotlin.math.cos(mid) * out).toFloat(), (kotlin.math.sin(mid) * out).toFloat())
                         drawArc(
-                            color = Color(sl.color),
+                            color = Color(sl.color).copy(alpha = if (pick == null || isPick) 1f else 0.35f),
                             startAngle = start + gap / 2,
                             sweepAngle = sweep - gap,
                             useCenter = false,
-                            topLeft = Offset(inset, inset),
+                            topLeft = Offset(inset, inset) + shift,
                             size = arc,
-                            style = Stroke(stroke)
+                            style = Stroke(stroke + (if (isPick) 6.dp.toPx() * pop.value else 0f))
                         )
                     }
                     start += sweep
                 }
             }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Spent", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(Money.format(total), style = MaterialTheme.typography.titleLarge)
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(120.dp)) {
+            Text(
+                if (pick != null) "${pick.emoji} ${pick.name}" else "Spent",
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            Text(Money.format(pick?.total ?: total), style = MaterialTheme.typography.titleLarge)
+            if (pick != null && total > 0) {
+                Text("${pick.total * 100 / total}%", style = MaterialTheme.typography.labelMedium, color = Color(pick.color))
+            }
         }
     }
 }
@@ -268,7 +321,7 @@ private fun BarChart(bars: List<TrendBar>) {
     val anim = remember { Animatable(0f) }
     LaunchedEffect(bars) {
         anim.snapTo(0f)
-        anim.animateTo(1f, tween(750, easing = FastOutSlowInEasing))
+        anim.animateTo(1f, tween(1100, easing = LinearEasing))
     }
     var selected by remember(bars) { mutableIntStateOf(bars.indexOfLast { it.value > 0 }) }
     val color = MaterialTheme.colorScheme.primary
@@ -301,7 +354,9 @@ private fun BarChart(bars: List<TrendBar>) {
             bars.forEachIndexed { i, b ->
                 val x = i * slot + (slot - bw) / 2
                 drawRoundRect(track, topLeft = Offset(x, 0f), size = Size(bw, size.height), cornerRadius = radius)
-                val h = size.height * (b.value.toFloat() / max) * anim.value
+                // Bars rise one after another, left to right, each easing to a stop.
+                val local = (anim.value * 1.6f - 0.6f * i / n).coerceIn(0f, 1f)
+                val h = size.height * (b.value.toFloat() / max) * FastOutSlowInEasing.transform(local)
                 if (h > 0f) {
                     drawRoundRect(
                         if (i == selected) color else dim,

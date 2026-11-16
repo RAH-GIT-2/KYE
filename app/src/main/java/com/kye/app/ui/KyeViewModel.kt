@@ -393,6 +393,19 @@ class KyeViewModel(app: Application) : AndroidViewModel(app) {
 
     var voiceOpen by mutableStateOf(false)
 
+    /** Bumped to throw confetti over the app (goal reached, month kept within budget). */
+    var confetti by mutableStateOf(0)
+        private set
+    fun celebrate() { confetti++ }
+
+    /** Confetti for keeping to last month's budget: once per month, not on every visit. */
+    fun celebrateMonthOnce(month: String) = viewModelScope.launch {
+        if (prefs.celebratedMonth() != month) {
+            prefs.setCelebratedMonth(month)
+            confetti++
+        }
+    }
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             repo.ensureSeeded()

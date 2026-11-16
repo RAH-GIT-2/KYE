@@ -98,6 +98,7 @@ import com.kye.app.ui.screens.RuleEditScreen
 import com.kye.app.ui.screens.SettingsScreen
 import com.kye.app.ui.screens.VoiceSheet
 import com.kye.app.ui.theme.KyeTheme
+import com.kye.app.ui.components.ConfettiBurst
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.HazeTint
@@ -434,6 +435,7 @@ private fun KyeRoot(vm: KyeViewModel, action: MutableState<String?>) {
     if (vm.voiceOpen) {
         VoiceSheet(vm) { vm.voiceOpen = false }
     }
+    ConfettiBurst(vm.confetti)
 }
 
 private fun NavHostController.goTab(route: String) {

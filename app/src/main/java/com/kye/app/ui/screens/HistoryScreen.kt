@@ -67,6 +67,7 @@ import com.kye.app.ui.components.EmptyState
 import com.kye.app.ui.components.EventChips
 import com.kye.app.ui.components.PaymentChips
 import com.kye.app.ui.components.TxnItem
+import com.kye.app.ui.components.LoadingRows
 import com.kye.app.ui.components.tabBottomPadding
 
 /** Which category kind an entry type uses (transfers live under expense categories). */
@@ -208,6 +209,7 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
             }
         }
 
+        if (loading) item(key = "loading") { LoadingRows(6) }
         if (!loading && grouped.isEmpty()) {
             item(key = "empty") {
                 EmptyState("🧾", if (all.isEmpty()) "No entries yet" else "Nothing matches", "Entries you add show up here, newest first")

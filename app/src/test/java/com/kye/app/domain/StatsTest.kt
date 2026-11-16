@@ -56,6 +56,17 @@ class StatsTest {
         assertEquals(1_000_00L, s.budget)
     }
 
+    @Test fun lastMonthSpendCountsOnlyLastMonthsExpenses() {
+        val rows = listOf(
+            row(LocalDate.of(2026, 10, 1), 100),
+            row(LocalDate.of(2026, 10, 31), 200),
+            row(LocalDate.of(2026, 10, 15), 900, type = TxnType.SAVING),
+            row(LocalDate.of(2026, 9, 30), 400),
+            row(LocalDate.of(2026, 11, 1), 800)
+        )
+        assertEquals(300_00L, Stats.home(rows, emptyList(), emptyMap(), cats, today).lastMonthSpent)
+    }
+
     @Test fun monthBoundariesAreInclusive() {
         val rows = listOf(
             row(LocalDate.of(2026, 11, 1), 10),

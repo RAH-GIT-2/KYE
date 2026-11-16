@@ -17,6 +17,8 @@ data class HomeState(
     val saved: Long = 0,
     val income: Long = 0,
     val today: Long = 0,
+    /** Spending (expenses) in the previous calendar month. */
+    val lastMonthSpent: Long = 0,
     val budget: Long? = null,
     val recent: List<TxnRow> = emptyList(),
     val upcoming: List<UpcomingBill> = emptyList(),
@@ -99,6 +101,9 @@ object Stats {
         var saved = 0L
         var income = 0L
         var todaySum = 0L
+        var lastMonth = 0L
+        val lastFrom = Dates.startOfDay(today.withDayOfMonth(1).minusMonths(1))
+        val lastTo = from - 1
         for (r in recentTxns) {
             val t = r.txn
             if (t.dateTime in from..to) {
@@ -110,6 +115,7 @@ object Stats {
                 }
             }
             if (t.type == TxnType.EXPENSE && t.dateTime in dayFrom..dayTo) todaySum += t.amountPaise
+            if (t.type == TxnType.EXPENSE && t.dateTime in lastFrom..lastTo) lastMonth += t.amountPaise
         }
         return HomeState(
             loaded = true,
@@ -117,6 +123,7 @@ object Stats {
             saved = saved,
             income = income,
             today = todaySum,
+            lastMonthSpent = lastMonth,
             budget = budgets[0L],
             recent = txns.take(8),
             upcoming = upcoming(rules, cats, today, 30).take(3),

@@ -58,6 +58,7 @@ class Prefs(context: Context) {
     private val backupError = stringPreferencesKey("backup_error")
     private val reportAuto = booleanPreferencesKey("report_auto")
     private val reportLast = stringPreferencesKey("report_last_month")
+    private val celebrated = stringPreferencesKey("celebrated_month")
 
     val settings: Flow<Settings> = appContext.dataStore.data.map {
         Settings(
@@ -141,6 +142,13 @@ class Prefs(context: Context) {
 
     suspend fun setLastReportMonth(month: String) {
         appContext.dataStore.edit { it[reportLast] = month }
+    }
+
+    /** The last month ("2026-10") whose kept-to-budget confetti has been shown. */
+    suspend fun celebratedMonth(): String? = appContext.dataStore.data.first()[celebrated]
+
+    suspend fun setCelebratedMonth(month: String) {
+        appContext.dataStore.edit { it[celebrated] = month }
     }
 
     /** Which built-in category set this phone has received. 0 = never recorded. */

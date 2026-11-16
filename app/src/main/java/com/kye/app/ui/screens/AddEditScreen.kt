@@ -4,6 +4,17 @@ package com.kye.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.ButtonDefaults
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -135,6 +146,16 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     var pickingWarranty by remember { mutableStateOf(false) }
     var photoBusy by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
+    // Saved: the button turns into a green tick for a moment before the form closes.
+    var closing by remember { mutableStateOf(false) }
+    val tick = remember { Animatable(0f) }
+    val view = LocalView.current
+    LaunchedEffect(closing) {
+        if (closing) {
+            tick.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
+            onBack()
+        }
+    }
     var cameraFile by remember { mutableStateOf<java.io.File?>(null) }
     var deletingPhoto by remember { mutableStateOf<ReceiptItem?>(null) }
     val savedPhotos by remember(txnId) { if (txnId > 0) vm.attachments(txnId) else kotlinx.coroutines.flow.flowOf(emptyList()) }
@@ -240,6 +261,11 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
     fun commit(txn: Txn, backfill: List<LocalDate>) {
         val old = existing
         saved = true
+        // Does this saving complete a goal? Checked before saving, against the goal as it was.
+        val goalDone = txn.type == TxnType.SAVING && txn.goalId != null && old?.goalId != txn.goalId &&
+            vm.goals.value.firstOrNull { it.goal.id == txn.goalId }?.let { g ->
+                g.progress < g.goal.targetPaise && g.progress + txn.amountPaise >= g.goal.targetPaise
+            } == true
         vm.saveTxnFull(txn, newPhotos, if (type == TxnType.EXPENSE) warranty else null) { msg ->
             if (repeat && old == null) {
                 val name = note.trim().ifBlank {
@@ -249,7 +275,10 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
                 vm.ruleFromTxn(txn, name, repeatUnit, repeatEvery, backfill)
             }
             if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-            onBack()
+            if (goalDone) vm.celebrate()
+            // A tap from the phone and a tick on the button, then back.
+            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+            closing = true
         }
     }
 
@@ -321,16 +350,29 @@ fun AddEditScreen(vm: KyeViewModel, txnId: Long, onManageCategories: () -> Unit 
             )
         },
         bottomBar = {
+            val buttonColor by animateColorAsState(
+                if (closing) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary, tween(200), label = "save"
+            )
             Button(
-                onClick = { save() },
+                onClick = { if (!closing) save() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .imePadding()
                     .padding(16.dp)
                     .height(56.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) { Text("Save", style = MaterialTheme.typography.titleMedium) }
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = buttonColor)
+            ) {
+                if (closing) {
+                    Icon(
+                        Icons.Rounded.Check, contentDescription = "Saved",
+                        modifier = Modifier.size(30.dp).graphicsLayer { scaleX = tick.value; scaleY = tick.value }
+                    )
+                } else {
+                    Text("Save", style = MaterialTheme.typography.titleMedium)
+                }
+            }
         }
     ) { pad ->
         Column(

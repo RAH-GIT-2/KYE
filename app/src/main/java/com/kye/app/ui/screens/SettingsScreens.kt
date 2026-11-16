@@ -271,7 +271,8 @@ fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 PaletteSwatches(settings?.palette ?: "violet") { vm.setPalette(it) }
                 Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                val black = settings?.pureBlack ?: false
+                Row(Modifier.clickable { vm.setPureBlack(!black) }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Pure black in dark mode", style = MaterialTheme.typography.bodyLarge)
                         Text(
@@ -280,7 +281,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(checked = settings?.pureBlack ?: false, onCheckedChange = { vm.setPureBlack(it) })
+                    Switch(checked = black, onCheckedChange = { vm.setPureBlack(it) })
                 }
             }
             Spacer(Modifier.height(8.dp))

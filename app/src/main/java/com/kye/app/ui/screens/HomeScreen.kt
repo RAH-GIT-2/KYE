@@ -55,6 +55,20 @@ import com.kye.app.domain.HomeState
 import com.kye.app.domain.Money
 import com.kye.app.domain.Tone
 import com.kye.app.domain.Sky
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -66,6 +80,7 @@ import com.kye.app.ui.components.EmptyState
 import com.kye.app.ui.components.ProgressBar
 import com.kye.app.ui.components.SectionCard
 import com.kye.app.ui.components.TxnItem
+import com.kye.app.ui.components.LoadingRows
 import com.kye.app.ui.theme.LocalHeroBrush
 import com.kye.app.ui.components.tabBottomPadding
 import java.time.LocalDate
@@ -140,6 +155,22 @@ fun HomeScreen(
         }
 
         item(key = "hero") { HeroCard(s, today, onBudgets) }
+
+        // First week of a month: last month stayed within the overall budget. Confetti once.
+        val budget = s.budget
+        if (s.loaded && budget != null && today.dayOfMonth <= 7 && s.lastMonthSpent in 1..budget) {
+            item(key = "kept") {
+                val last = today.minusMonths(1)
+                LaunchedEffect(Unit) { vm.celebrateMonthOnce(last.toString().take(7)) }
+                SectionCard(title = "🎉 Within budget in ${Dates.monthName(last)}") {
+                    Text(
+                        "${Money.format(budget - s.lastMonthSpent)} under your ${Money.format(budget)} budget. Well done!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
+        }
 
         // Ask KYE: tap to type, mic to speak.
         item(key = "ask") {
@@ -344,6 +375,8 @@ fun HomeScreen(
             }
         }
 
+        if (!s.loaded) item(key = "loading") { LoadingRows(4) }
+
         if (s.loaded && s.recent.isEmpty()) {
             item(key = "empty") {
                 if (settings?.voiceEnabled != false) {
@@ -438,6 +471,8 @@ private fun HeroCard(s: HomeState, today: LocalDate, onBudgets: () -> Unit) {
             .padding(22.dp)
     ) {
         Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
             Text("Spent in ${Dates.monthName(today)}", style = MaterialTheme.typography.bodyMedium, color = onHero.copy(alpha = 0.85f))
             Spacer(Modifier.height(4.dp))
             AnimatedAmount(s.spent, MaterialTheme.typography.displaySmall, color = onHero)
@@ -450,26 +485,22 @@ private fun HeroCard(s: HomeState, today: LocalDate, onBudgets: () -> Unit) {
                     color = onHero.copy(alpha = 0.85f)
                 )
             }
+            }
+            val ringBudget = s.budget
+            if (ringBudget != null && ringBudget > 0) {
+                Spacer(Modifier.width(12.dp))
+                BudgetRing(s.spent.toFloat() / ringBudget)
+            }
+            }
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth()) {
-                MiniStat("Today", Money.format(s.today), Modifier.weight(1f))
-                MiniStat("Saved", Money.format(s.saved), Modifier.weight(1f))
+                MiniStat("Today", s.today, Modifier.weight(1f))
+                MiniStat("Saved", s.saved, Modifier.weight(1f))
                 val budget = s.budget
                 MiniStat(
                     if (budget != null && s.spent > budget) "Over budget" else "Budget left",
                     if (budget != null) Money.format(kotlin.math.abs(budget - s.spent)) else "Set →",
                     Modifier.weight(1f)
-                )
-            }
-            val budget = s.budget
-            if (budget != null && budget > 0) {
-                Spacer(Modifier.height(16.dp))
-                val fraction = s.spent.toFloat() / budget
-                ProgressBar(
-                    fraction = fraction,
-                    color = if (fraction >= 1f) Color(0xFFFFB3B0) else Color.White,
-                    track = Color.White.copy(alpha = 0.25f),
-                    height = 6.dp
                 )
             }
         }
@@ -510,5 +541,62 @@ private fun SkyBackdrop(colors: List<Long>) {
                     androidx.compose.foundation.shape.CircleShape
                 )
         )
+    }
+}
+
+/** A hero stat whose amount rolls when it changes. */
+@Composable
+private fun MiniStat(label: String, paise: Long, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.75f))
+        AnimatedAmount(paise, MaterialTheme.typography.titleMedium, color = Color.White)
+    }
+}
+
+/**
+ * How much of the month's budget is used, as a ring that fills: green, then amber from 60%,
+ * coral once it's all gone. It gives one gentle pulse when spending crosses 80%.
+ */
+@Composable
+private fun BudgetRing(fraction: Float) {
+    val f = fraction.coerceAtLeast(0f)
+    val sweep by animateFloatAsState(f.coerceAtMost(1f), tween(900, easing = FastOutSlowInEasing), label = "ring")
+    val green = Color(0xFF55EFC4)
+    val amber = Color(0xFFFDCB6E)
+    val coral = Color(0xFFFF8A80)
+    val color by animateColorAsState(
+        when {
+            f >= 1f -> coral
+            f >= 0.6f -> lerp(amber, coral, ((f - 0.6f) / 0.4f).coerceIn(0f, 1f) * 0.6f)
+            else -> lerp(green, amber, (f / 0.6f).coerceIn(0f, 1f) * 0.35f)
+        },
+        tween(600), label = "ringColor"
+    )
+    val pulse = remember { Animatable(1f) }
+    var before by remember { mutableStateOf(f) }
+    LaunchedEffect(f) {
+        if (before < 0.8f && f >= 0.8f) {
+            pulse.animateTo(1.14f, tween(180))
+            pulse.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+        before = f
+    }
+    Box(
+        Modifier
+            .size(86.dp)
+            .graphicsLayer { scaleX = pulse.value; scaleY = pulse.value },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 9.dp.toPx()
+            val inset = stroke / 2
+            val arc = Size(size.width - stroke, size.height - stroke)
+            drawArc(Color.White.copy(alpha = 0.22f), 0f, 360f, false, Offset(inset, inset), arc, style = Stroke(stroke))
+            drawArc(color, -90f, 360f * sweep, false, Offset(inset, inset), arc, style = Stroke(stroke, cap = StrokeCap.Round))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("${(f * 100).toInt()}%", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text("of budget", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+        }
     }
 }
