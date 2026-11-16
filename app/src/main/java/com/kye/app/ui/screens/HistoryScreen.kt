@@ -38,6 +38,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -50,11 +51,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kye.app.data.CategoryKind
 import com.kye.app.data.PaymentMode
+import com.kye.app.data.TxnRow
 import com.kye.app.data.TxnType
 import com.kye.app.domain.Dates
 import com.kye.app.domain.Events
+import com.kye.app.domain.HistoryFilter
 import com.kye.app.domain.Money
 import com.kye.app.ui.KyeViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
 import com.kye.app.ui.components.CategoryPicker
 import com.kye.app.ui.components.ChoiceChip
 import com.kye.app.ui.components.EmptyState
@@ -86,7 +92,7 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
     var action by remember { mutableStateOf<String?>(null) } // category | payment | event | delete
     val selecting = selected.isNotEmpty()
     BackHandler(enabled = selecting) { selected = emptySet() }
-    val chosen = all.filter { it.txn.id in selected }
+    val chosen = remember(all, selected) { if (selected.isEmpty()) emptyList() else all.filter { it.txn.id in selected } }
     // Entries deleted elsewhere drop out of the selection.
     if (selecting && chosen.size != selected.size) selected = chosen.map { it.txn.id }.toSet()
     val done: (String) -> Unit = { msg ->
@@ -95,18 +101,17 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
         action = null
     }
 
-    val grouped = remember(all, query, typeFilter, catFilter) {
-        val q = query.trim().lowercase()
-        all.asSequence()
-            .filter { typeFilter == null || it.txn.type == typeFilter }
-            .filter { catFilter == null || it.txn.categoryId == catFilter }
-            .filter {
-                q.isEmpty() || it.title.lowercase().contains(q) || it.txn.note.lowercase().contains(q) ||
-                    (it.catName?.lowercase()?.contains(q) == true) || Money.plain(it.txn.amountPaise).contains(q)
-            }
-            .toList()
-            .groupBy { Dates.toLocalDate(it.txn.dateTime) }
+    // Searching and grouping years of entries runs in the background so typing never stutters.
+    // Until the first result is ready (null) the list stays blank rather than saying "No entries".
+    val index by produceState<List<HistoryFilter.Indexed>?>(null, all) {
+        value = withContext(Dispatchers.Default) { HistoryFilter.index(all) }
     }
+    val result by produceState<Map<LocalDate, List<TxnRow>>?>(null, index, query, typeFilter, catFilter) {
+        val idx = index ?: return@produceState
+        value = withContext(Dispatchers.Default) { HistoryFilter.apply(idx, query, typeFilter, catFilter) }
+    }
+    val loading = result == null
+    val grouped = result ?: emptyMap()
     val shownIds = remember(grouped) { grouped.values.flatten().map { it.txn.id } }
 
     LazyColumn(
@@ -202,7 +207,7 @@ fun HistoryScreen(vm: KyeViewModel, onOpenTxn: (Long) -> Unit) {
             }
         }
 
-        if (grouped.isEmpty()) {
+        if (!loading && grouped.isEmpty()) {
             item(key = "empty") {
                 EmptyState("🧾", if (all.isEmpty()) "No entries yet" else "Nothing matches", "Entries you add show up here, newest first")
             }

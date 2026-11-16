@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.kye.app.domain.Dates
-import com.kye.app.domain.Money
 import com.kye.app.domain.Period
 import com.kye.app.domain.Stats
 import kotlinx.coroutines.flow.first
@@ -69,13 +68,9 @@ class SpeedTest {
         time("home") { Stats.home(rows, rules, emptyMap(), cats, today) }
         time("analytics this month") { Stats.analytics(rows, Period.THIS_MONTH, rules, emptyMap(), cats, today) }
         time("month by category") { Stats.monthSpendByCategory(rows, today) }
-        time("history group") { rows.groupBy { Dates.toLocalDate(it.txn.dateTime) } }
-        time("history search") {
-            rows.filter {
-                it.title.lowercase().contains("swig") || it.txn.note.lowercase().contains("swig") ||
-                    (it.catName?.lowercase()?.contains("swig") == true) || Money.plain(it.txn.amountPaise).contains("swig")
-            }
-        }
+        val index = time("history prepare search (once per change)") { com.kye.app.domain.HistoryFilter.index(rows) }
+        time("history show all") { com.kye.app.domain.HistoryFilter.apply(index, "", null, null) }
+        time("history search per letter") { com.kye.app.domain.HistoryFilter.apply(index, "swig", null, null) }
         time("first flow emit") { repo.transactions.first() }
         Unit
     }

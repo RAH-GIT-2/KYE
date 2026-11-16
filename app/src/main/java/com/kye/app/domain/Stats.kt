@@ -91,11 +91,15 @@ object Stats {
         val to = Dates.endOfDay(today.withDayOfMonth(today.lengthOfMonth()))
         val dayFrom = Dates.startOfDay(today)
         val dayTo = Dates.endOfDay(today)
+        // Everything on Home looks back at most to last month (insights: 8 weeks, repeats: 30 days),
+        // so years of older entries are skipped up front. Three months gives room to spare.
+        val since = Dates.startOfDay(today.withDayOfMonth(1).minusMonths(3))
+        val recentTxns = txns.filter { it.txn.dateTime >= since }
         var spent = 0L
         var saved = 0L
         var income = 0L
         var todaySum = 0L
-        for (r in txns) {
+        for (r in recentTxns) {
             val t = r.txn
             if (t.dateTime in from..to) {
                 when (t.type) {
@@ -116,9 +120,9 @@ object Stats {
             budget = budgets[0L],
             recent = txns.take(8),
             upcoming = upcoming(rules, cats, today, 30).take(3),
-            forecast = Insights.forecast(txns, rules, budgets[0L], today),
-            highlights = Insights.highlights(txns, budgets, cats, today),
-            repeats = Repeats.suggest(txns, today)
+            forecast = Insights.forecast(recentTxns, rules, budgets[0L], today),
+            highlights = Insights.highlights(recentTxns, budgets, cats, today),
+            repeats = Repeats.suggest(recentTxns, today)
         )
     }
 
